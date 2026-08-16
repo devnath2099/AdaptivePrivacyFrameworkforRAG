@@ -1,0 +1,93 @@
+seed: 42
+
+datasets:
+  healthcare:
+    hf_id: "lavita/ChatDoctor-HealthCareMagic-100k"
+    domain: "medical"
+    split: "train"
+  fiqa:
+    hf_id: "BeIR/fiqa"
+    hf_config: "corpus"
+    domain: "financial"
+    # NOTE: BeIR/fiqa's "corpus" config only exposes a split named
+    # "corpus" (confirmed against the dataset's viewer/schema on
+    # huggingface.co/datasets/BeIR/fiqa) -- there is no "train" split
+    # under this config, so "corpus" is used here instead of "train".
+    split: "corpus"
+  hotpotqa:
+    hf_id: "hotpotqa/hotpot_qa"
+    hf_config: "distractor"
+    domain: "multi_hop_qa"
+    split: "validation"
+  nq:
+    hf_id: "sentence-transformers/natural-questions"
+    domain: "general_qa"
+    # NOTE: sentence-transformers/natural-questions only has a "train"
+    # split (confirmed against the dataset's schema on
+    # huggingface.co/datasets/sentence-transformers/natural-questions)
+    # -- there is no "validation" split, so "train" is used here instead.
+    split: "train"
+
+max_samples_per_dataset:
+  healthcare: 40
+  fiqa: 40
+  hotpotqa: 40
+  nq: 40
+
+data_cache:
+  enabled: true
+  root: "data/raw"
+  prefer_local: true
+  download_if_missing: true
+
+preprocessing:
+  min_text_length: 3
+  lowercase_for_dedup: true
+  unicode_normalize_form: "NFKC"
+
+evidence:
+  spacy_model: "en_core_web_sm"
+  regex_patterns:
+    - email
+    - phone
+    - money
+    - date
+    - url
+    - account_number
+
+embeddings:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  batch_size: 16
+  device: "cpu"
+
+label_taxonomy:
+  entity_tags:
+    - has_person
+    - has_organization
+    - has_location
+    - has_contact_identifier
+  sensitivity:
+    - low
+    - medium
+    - high
+  intent:
+    - general_information
+    - personal_information_request
+    - medical_information_request
+    - financial_information_request
+    - identity_related_request
+  disclosure_scope:
+    - single_document
+    - multi_document
+  threat_content:
+    - re_identification
+    - attribute_inference
+    - membership_inference
+
+output_paths:
+  root: "outputs"
+  m1_dataset: "outputs/m1_unified_dataset.jsonl"
+  m1_stats: "outputs/m1_statistics.json"
+  m2_lf_matrix_dir: "outputs/m2_lf_matrices"
+  m2_weak_labels_dir: "outputs/m2_weak_labels"
+  m2_diagnostics: "outputs/m2_diagnostics.json"

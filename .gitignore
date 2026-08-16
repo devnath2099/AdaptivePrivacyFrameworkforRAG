@@ -1,0 +1,7 @@
+fypvenv/
+.env
+__pycache__/
+*.pyc
+*.csv
+*.zip
+*.pth
