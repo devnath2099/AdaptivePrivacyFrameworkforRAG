@@ -39,12 +39,54 @@ class M1Result:
     statistics: Dict[str, Any] = field(default_factory=dict)
     stage_snapshots: Dict[str, Any] = field(default_factory=dict)
 
+    def balanced_sample(self, seed: int = 42) -> List[UnifiedRecord]:
+        return sample_balanced_by_domain(self.records, seed)
+
 
 def _domain_distribution(records: List[UnifiedRecord]) -> Dict[str, int]:
     dist: Dict[str, int] = {}
     for r in records:
         dist[r.domain] = dist.get(r.domain, 0) + 1
     return dist
+
+
+def sample_balanced_by_domain(records: List[UnifiedRecord], seed: int = 42) -> List[UnifiedRecord]:
+    """Return a balanced sample where each domain is represented proportionally.
+
+    Aims for roughly equal representation per domain. If a domain has fewer
+    records than the smallest domain, all its records are kept and others are
+    down-sampled to match. If a domain has more, it is down-sampled.
+
+    The result is seeded for reproducibility.
+    """
+    import random
+    import numpy as np
+
+    rng = random.Random(seed)
+
+    # Group records by domain
+    by_domain: Dict[str, List[UnifiedRecord]] = {}
+    for r in records:
+        by_domain.setdefault(r.domain, []).append(r)
+
+    if not by_domain:
+        return []
+
+    # Find the smallest domain size
+    sizes = {d: len(recs) for d, recs in by_domain.items()}
+    target_size = min(sizes.values())
+
+    # Sample each domain to target_size
+    balanced: List[UnifiedRecord] = []
+    for domain, recs in by_domain.items():
+        if len(recs) <= target_size:
+            balanced.extend(recs)
+        else:
+            shuffled = recs[:]
+            rng.shuffle(shuffled)
+            balanced.extend(shuffled[:target_size])
+
+    return balanced
 
 
 def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None) -> M1Result:

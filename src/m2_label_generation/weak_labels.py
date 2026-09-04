@@ -33,18 +33,20 @@ class DimensionWeakLabelResult:
 
 def synthesize_weak_labels_for_dimension(
     records: List[UnifiedRecord], spec: DimensionSpec, seed: int,
+    balance_domains: bool = False,
 ) -> DimensionWeakLabelResult:
     """Unified path for multi-class and multi-label dimensions."""
     if spec.is_multi_label:
-        return _synthesize_multi_label(records, spec, seed)
-    return _synthesize_multi_class(records, spec, seed)
+        return _synthesize_multi_label(records, spec, seed, balance_domains=balance_domains)
+    return _synthesize_multi_class(records, spec, seed, balance_domains=balance_domains)
 
 
 def _synthesize_multi_class(
     records: List[UnifiedRecord], spec: DimensionSpec, seed: int,
+    balance_domains: bool = False,
 ) -> DimensionWeakLabelResult:
     lfs = DIMENSION_LFS[spec.name]
-    lf_result = build_lf_matrix(records, lfs, spec)
+    lf_result = build_lf_matrix(records, lfs, spec, balance_domains=balance_domains, seed=seed)
     gen_result = fit_and_infer(lf_result.matrix, spec.num_classes, seed=seed)
     return DimensionWeakLabelResult(
         dimension=spec.name,
@@ -57,6 +59,7 @@ def _synthesize_multi_class(
 
 def _synthesize_multi_label(
     records: List[UnifiedRecord], spec: DimensionSpec, seed: int,
+    balance_domains: bool = False,
 ) -> DimensionWeakLabelResult:
     n = len(records)
     category_probs = np.zeros((n, len(spec.labels)))
@@ -72,7 +75,7 @@ def _synthesize_multi_label(
     for k, category in enumerate(spec.labels):
         lfs = lfs_dict[category]
         binary_spec = DimensionSpec(name=f"{spec.name}_{category}", labels=["absent", "present"], is_multi_label=False)
-        lf_result = build_lf_matrix(records, lfs, binary_spec)
+        lf_result = build_lf_matrix(records, lfs, binary_spec, balance_domains=balance_domains, seed=seed)
         gen_result = fit_and_infer(lf_result.matrix, num_classes=2, seed=seed)
         category_probs[:, k] = gen_result.probs[:, 1] if gen_result.probs.shape[0] else 0.0
 
@@ -109,8 +112,9 @@ def _synthesize_multi_label(
 
 def synthesize_all_dimensions(
     records: List[UnifiedRecord], taxonomy: Dict[str, DimensionSpec], seed: int,
+    balance_domains: bool = False,
 ) -> Dict[str, DimensionWeakLabelResult]:
     results: Dict[str, DimensionWeakLabelResult] = {}
     for dim_name, spec in taxonomy.items():
-        results[dim_name] = synthesize_weak_labels_for_dimension(records, spec, seed)
+        results[dim_name] = synthesize_weak_labels_for_dimension(records, spec, seed, balance_domains=balance_domains)
     return results

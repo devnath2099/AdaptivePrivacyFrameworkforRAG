@@ -87,7 +87,7 @@ def run_m2(records: List[UnifiedRecord], cfg: ReviewConfig,
     }
     emit("posterior_inference", "completed", snapshots["posterior_inference"])
 
-    diagnostics = full_diagnostics(dimension_results)
+    diagnostics = full_diagnostics(dimension_results, records=records)
     return M2Result(dimension_results=dimension_results, diagnostics=diagnostics, stage_snapshots=snapshots)
 
 

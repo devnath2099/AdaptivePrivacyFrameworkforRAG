@@ -30,12 +30,29 @@ def build_lf_matrix(
     records: List[UnifiedRecord],
     lfs: List[LabelingFunction],
     spec: DimensionSpec,
+    balance_domains: bool = False,
+    seed: int = 42,
 ) -> LFMatrixResult:
-    n, m = len(records), len(lfs)
+    """Build the LF matrix, optionally with domain balancing.
+
+    If `balance_domains=True`, records are first down-sampled/proportionally
+    sampled so each domain is represented equally (or near-equally) before
+    the LF matrix is constructed. This is useful for mitigating domain
+    imbalance effects on the generative model.
+
+    The random state is seeded for reproducibility.
+    """
+    from src.m1_data_integration.pipeline import sample_balanced_by_domain as _sample_balanced
+
+    working_records = records
+    if balance_domains:
+        working_records = _sample_balanced(records, seed=seed)
+
+    n, m = len(working_records), len(lfs)
     matrix = np.full((n, m), ABSTAIN, dtype=int)
 
     for j, lf in enumerate(lfs):
-        for i, record in enumerate(records):
+        for i, record in enumerate(working_records):
             try:
                 vote = lf(record, spec)
             except Exception:  # noqa: BLE001 - a single LF failure must not break the run
