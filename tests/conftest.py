@@ -19,8 +19,9 @@ CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "review1.yaml
 def small_cfg():
     cfg = load_config(CONFIG_PATH)
     # keep tests fast regardless of the checked-in config's sample sizes
-    for key in cfg.max_samples:
-        cfg.max_samples[key] = 12
+    raw = cfg.raw.get("max_samples_per_dataset", {})
+    for key in raw:
+        raw[key] = 12
     return cfg
 
 

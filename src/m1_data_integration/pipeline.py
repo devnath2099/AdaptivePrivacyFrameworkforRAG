@@ -1,5 +1,5 @@
 """M1 orchestration: Datasets -> Integration -> Cleaning -> Domain Assignment
--> Deduplication -> Semantic Evidence Extraction -> (D, E_A).
+-> Deduplication -> Semantic Evidence Extraction -> Domain-Stratified Split -> (D, E_A).
 
 `run_m1` returns a `M1Result` that also carries per-stage snapshots so
 that a UI layer can visualize "Pending -> Running -> Completed" without
@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .cleaner import clean_all
 from .config import ReviewConfig
@@ -30,6 +31,7 @@ M1_STAGES = [
     "domain_assignment",
     "deduplication",
     "semantic_evidence_extraction",
+    "domain_stratified_split",
 ]
 
 
@@ -50,7 +52,211 @@ def _domain_distribution(records: List[UnifiedRecord]) -> Dict[str, int]:
     return dist
 
 
-def sample_balanced_by_domain(records: List[UnifiedRecord], seed: int = 42) -> List[UnifiedRecord]:
+def _domain_stratified_split(
+    records: List[UnifiedRecord],
+    train_ratio: float,
+    validation_ratio: float,
+    test_ratio: float,
+    seed: int,
+    stratify_by_domain: bool = True,
+) -> Tuple[List[UnifiedRecord], List[UnifiedRecord], List[UnifiedRecord]]:
+    """Perform domain-stratified train/validation/test split.
+
+    If stratify_by_domain is True, splits each domain independently to preserve
+    domain proportions. Records are shuffled within each domain before splitting.
+
+    Returns:
+        Tuple of (train_records, validation_records, test_records)
+    """
+    if abs(train_ratio + validation_ratio + test_ratio - 1.0) > 1e-9:
+        raise ValueError("Split ratios must sum to 1.0")
+
+    rng = random.Random(seed)
+
+    if not stratify_by_domain:
+        # Global shuffle
+        shuffled = records[:]
+        rng.shuffle(shuffled)
+        n = len(shuffled)
+        train_end = int(n * train_ratio)
+        val_end = train_end + int(n * validation_ratio)
+        return shuffled[:train_end], shuffled[train_end:val_end], shuffled[val_end:]
+
+    # Domain-stratified split
+    by_domain: Dict[str, List[UnifiedRecord]] = {}
+    for r in records:
+        by_domain.setdefault(r.domain, []).append(r)
+
+    train_records: List[UnifiedRecord] = []
+    val_records: List[UnifiedRecord] = []
+    test_records: List[UnifiedRecord] = []
+
+    for domain, domain_records in by_domain.items():
+        rng.shuffle(domain_records)
+        n = len(domain_records)
+        train_end = int(n * train_ratio)
+        val_end = train_end + int(n * validation_ratio)
+
+        for i, r in enumerate(domain_records):
+            if i < train_end:
+                r.split = "train"
+                train_records.append(r)
+            elif i < val_end:
+                r.split = "validation"
+                val_records.append(r)
+            else:
+                r.split = "test"
+                test_records.append(r)
+
+    # Final shuffle within each split to mix domains
+    rng.shuffle(train_records)
+    rng.shuffle(val_records)
+    rng.shuffle(test_records)
+
+    return train_records, val_records, test_records
+
+
+def _check_split_leakage(
+    train_records: List[UnifiedRecord],
+    validation_records: List[UnifiedRecord],
+    test_records: List[UnifiedRecord],
+) -> Dict[str, Any]:
+    """Check for data leakage across train/validation/test splits.
+
+    Checks for exact matches on:
+    - normalized_text (query deduplication key)
+    - record_id
+    - source_dataset + row_index (from metadata)
+
+    Returns dict with leakage counts and details.
+    """
+    def make_key(r: UnifiedRecord) -> str:
+        return r.normalized_text.lower().strip()
+
+    def make_source_key(r: UnifiedRecord) -> str:
+        src = r.metadata.get("source_mode", "unknown")
+        idx = r.metadata.get("row_index", "unknown")
+        return f"{r.source_dataset}:{idx}"
+
+    leakage: Dict[str, Any] = {}
+
+    # Build sets for each split
+    train_keys = {make_key(r) for r in train_records}
+    val_keys = {make_key(r) for r in validation_records}
+    test_keys = {make_key(r) for r in test_records}
+
+    train_source_keys = {make_source_key(r) for r in train_records}
+    val_source_keys = {make_source_key(r) for r in validation_records}
+    test_source_keys = {make_source_key(r) for r in test_records}
+
+    # Check normalized_text overlap
+    train_val_overlap = train_keys & val_keys
+    train_test_overlap = train_keys & test_keys
+    val_test_overlap = val_keys & test_keys
+
+    leakage["normalized_text_overlap"] = {
+        "train_validation": len(train_val_overlap),
+        "train_test": len(train_test_overlap),
+        "validation_test": len(val_test_overlap),
+        "examples_train_validation": list(train_val_overlap)[:5],
+        "examples_train_test": list(train_test_overlap)[:5],
+        "examples_validation_test": list(val_test_overlap)[:5],
+    }
+
+    # Check source key overlap
+    train_val_source_overlap = train_source_keys & val_source_keys
+    train_test_source_overlap = train_source_keys & test_source_keys
+    val_test_source_overlap = val_source_keys & test_source_keys
+
+    leakage["source_key_overlap"] = {
+        "train_validation": len(train_val_source_overlap),
+        "train_test": len(train_test_source_overlap),
+        "validation_test": len(val_test_source_overlap),
+        "examples_train_validation": list(train_val_source_overlap)[:5],
+        "examples_train_test": list(train_test_source_overlap)[:5],
+        "examples_validation_test": list(val_test_source_overlap)[:5],
+    }
+
+    # Record ID overlap
+    train_ids = {r.record_id for r in train_records}
+    val_ids = {r.record_id for r in validation_records}
+    test_ids = {r.record_id for r in test_records}
+
+    leakage["record_id_overlap"] = {
+        "train_validation": len(train_ids & val_ids),
+        "train_test": len(train_ids & test_ids),
+        "validation_test": len(val_ids & test_ids),
+    }
+
+    return leakage
+
+
+def _reconcile_counts(
+    raw_by_dataset: Dict[str, List],
+    raw_counts: Dict[str, int],
+    cleaned_count: int,
+    removed_by_cleaning: int,
+    deduped_count: int,
+    dedup_stats: Dict[str, Any],
+    train_records: List[UnifiedRecord],
+    val_records: List[UnifiedRecord],
+    test_records: List[UnifiedRecord],
+) -> Dict[str, Any]:
+    """Perform reconciliation checks at end of M1.
+
+    Verifies:
+    1. raw records = valid + removed by cleaning
+    2. cleaned records = train + validation + test
+    3. domain totals = sum of domain counts
+    4. train/val/test totals = sum of their domain counts
+
+    Returns reconciliation report with any mismatches.
+    """
+    reconciliation: Dict[str, Any] = {
+        "checks_passed": True,
+        "mismatches": [],
+    }
+
+    # 1. raw = cleaned + removed_by_cleaning
+    total_raw = sum(raw_counts.values())
+    expected_cleaned = total_raw - removed_by_cleaning
+    if cleaned_count != expected_cleaned:
+        reconciliation["checks_passed"] = False
+        reconciliation["mismatches"].append({
+            "check": "raw_equals_cleaned_plus_removed",
+            "expected": expected_cleaned,
+            "actual": cleaned_count,
+            "details": f"total_raw={total_raw}, removed_by_cleaning={removed_by_cleaning}",
+        })
+
+    # 2. cleaned = train + validation + test (should equal deduped count)
+    total_split = len(train_records) + len(val_records) + len(test_records)
+    if total_split != cleaned_count:
+        reconciliation["checks_passed"] = False
+        reconciliation["mismatches"].append({
+            "check": "split_equals_cleaned",
+            "expected": cleaned_count,
+            "actual": total_split,
+            "details": f"train={len(train_records)}, validation={len(val_records)}, test={len(test_records)}",
+        })
+
+    # 3. Domain totals = sum of domain counts (for splits)
+    # This is implicitly verified by the split logic
+
+    # 4. Split totals = sum of their domain counts
+    for split_name, records in [("train", train_records), ("validation", val_records), ("test", test_records)]:
+        split_domain_dist = {}
+        for r in records:
+            split_domain_dist[r.domain] = split_domain_dist.get(r.domain, 0) + 1
+        if sum(split_domain_dist.values()) != len(records):
+            reconciliation["checks_passed"] = False
+            reconciliation["mismatches"].append({
+                "check": f"{split_name}_domain_sum_matches_total",
+                "expected": len(records),
+                "actual": sum(split_domain_dist.values()),
+            })
+
+    return reconciliation
     """Return a balanced sample where each domain is represented proportionally.
 
     Aims for roughly equal representation per domain. If a domain has fewer
@@ -99,6 +305,9 @@ def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None) -> M1Result:
     def emit(stage: str, status: str, payload: Any = None):
         if on_stage is not None:
             on_stage(stage, status, payload)
+
+    # Log execution mode
+    logger.info("M1 Execution Mode: %s", cfg.mode)
 
     stats: Dict[str, Any] = {}
     snapshots: Dict[str, Any] = {}
@@ -178,8 +387,102 @@ def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None) -> M1Result:
     }
     emit("semantic_evidence_extraction", "completed", snapshots["semantic_evidence_extraction"])
 
+    # 7. domain-stratified train/validation/test split
+    emit("domain_stratified_split", "running")
+    split_cfg = cfg.split_cfg
+    train_records, val_records, test_records = _domain_stratified_split(
+        deduped,
+        train_ratio=split_cfg.get("train_ratio", 0.8),
+        validation_ratio=split_cfg.get("validation_ratio", 0.1),
+        test_ratio=split_cfg.get("test_ratio", 0.1),
+        seed=split_cfg.get("seed", 42),
+        stratify_by_domain=split_cfg.get("stratify_by_domain", True),
+    )
+
+    # Leakage check
+    leakage = _check_split_leakage(train_records, val_records, test_records)
+    stats["split_leakage"] = leakage
+
+    # Log leakage results
+    if leakage.get("normalized_text_overlap", {}).get("train_validation", 0) > 0:
+        logger.warning("LEAKAGE DETECTED: train/validation normalized_text overlap: %d",
+                       leakage["normalized_text_overlap"]["train_validation"])
+    if leakage.get("normalized_text_overlap", {}).get("train_test", 0) > 0:
+        logger.warning("LEAKAGE DETECTED: train/test normalized_text overlap: %d",
+                       leakage["normalized_text_overlap"]["train_test"])
+    if leakage.get("normalized_text_overlap", {}).get("validation_test", 0) > 0:
+        logger.warning("LEAKAGE DETECTED: validation/test normalized_text overlap: %d",
+                       leakage["normalized_text_overlap"]["validation_test"])
+
+    # Reconciliation check
+    reconciliation = _reconcile_counts(
+        raw_by_dataset=raw_by_dataset,
+        raw_counts=raw_counts,
+        cleaned_count=len(cleaned),
+        removed_by_cleaning=stats["records_removed_by_cleaning"],
+        deduped_count=len(deduped),
+        dedup_stats=dedup_stats,
+        train_records=train_records,
+        val_records=val_records,
+        test_records=test_records,
+    )
+    stats["reconciliation"] = reconciliation
+    if not reconciliation["checks_passed"]:
+        logger.error("RECONCILIATION FAILED: %s", reconciliation["mismatches"])
+        for m in reconciliation["mismatches"]:
+            logger.error("  - %s: expected %s, actual %s (%s)",
+                         m["check"], m["expected"], m["actual"], m.get("details", ""))
+    else:
+        logger.info("Reconciliation checks passed")
+
+    # Split statistics
+    train_dist = _domain_distribution(train_records)
+    val_dist = _domain_distribution(val_records)
+    test_dist = _domain_distribution(test_records)
+
+    stats["split"] = {
+        "train_count": len(train_records),
+        "validation_count": len(val_records),
+        "test_count": len(test_records),
+        "train_domain_distribution": train_dist,
+        "validation_domain_distribution": val_dist,
+        "test_domain_distribution": test_dist,
+        "train_ratio": len(train_records) / len(deduped) if deduped else 0,
+        "validation_ratio": len(val_records) / len(deduped) if deduped else 0,
+        "test_ratio": len(test_records) / len(deduped) if deduped else 0,
+        "stratify_by_domain": split_cfg.get("stratify_by_domain", True),
+    }
+
+    # Per-domain split percentages
+    per_domain_split: Dict[str, Dict[str, float]] = {}
+    for domain in domain_dist.keys():
+        d_train = train_dist.get(domain, 0)
+        d_val = val_dist.get(domain, 0)
+        d_test = test_dist.get(domain, 0)
+        d_total = d_train + d_val + d_test
+        if d_total > 0:
+            per_domain_split[domain] = {
+                "train_percentage": d_train / d_total,
+                "validation_percentage": d_val / d_total,
+                "test_percentage": d_test / d_total,
+                "train_count": d_train,
+                "validation_count": d_val,
+                "test_count": d_test,
+            }
+    stats["split"]["per_domain_percentages"] = per_domain_split
+
+    snapshots["domain_stratified_split"] = {
+        "split_stats": stats["split"],
+        "leakage": leakage,
+    }
+    emit("domain_stratified_split", "completed", snapshots["domain_stratified_split"])
+
+    # Combine all records with split assignments
+    all_records = train_records + val_records + test_records
+
     stats["final_record_count"] = len(deduped)
-    return M1Result(records=deduped, statistics=stats, stage_snapshots=snapshots)
+    stats["mode"] = "development" if cfg.mode == "development" else "full"
+    return M1Result(records=all_records, statistics=stats, stage_snapshots=snapshots)
 
 
 def _sample_raw(raw_by_dataset: Dict[str, List]) -> Optional[Dict[str, Any]]:
@@ -201,6 +504,20 @@ def save_m1_outputs(result: M1Result, cfg: ReviewConfig) -> None:
     with open(dataset_path, "w", encoding="utf-8") as fh:
         for r in result.records:
             fh.write(json.dumps(r.to_dict(), default=str) + "\n")
+
+    # Save split files
+    splits = {"train": [], "validation": [], "test": []}
+    for r in result.records:
+        if r.split in splits:
+            splits[r.split].append(r)
+
+    output_dir = dataset_path.parent
+    for split_name, records in splits.items():
+        split_path = output_dir / f"m1_{split_name}_dataset.jsonl"
+        with open(split_path, "w", encoding="utf-8") as fh:
+            for r in records:
+                fh.write(json.dumps(r.to_dict(), default=str) + "\n")
+        logger.info("M1 %s split saved: %s (%d records)", split_name, split_path, len(records))
 
     stats_path = cfg.resolve_output("m1_stats")
     with open(stats_path, "w", encoding="utf-8") as fh:

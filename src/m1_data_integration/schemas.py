@@ -47,6 +47,7 @@ class UnifiedRecord:
     metadata: Dict[str, Any] = field(default_factory=dict)
     evidence: Optional[EvidenceBundle] = None
     is_duplicate: bool = False
+    split: Optional[str] = None  # train/validation/test
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)

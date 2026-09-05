@@ -29,10 +29,10 @@ datasets:
     split: "train"
 
 max_samples_per_dataset:
-  healthcare: 40
-  fiqa: 40
-  hotpotqa: 40
-  nq: 40
+  healthcare: null
+  fiqa: null
+  hotpotqa: null
+  nq: null
 
 data_cache:
   enabled: true
@@ -91,5 +91,12 @@ output_paths:
   m2_lf_matrix_dir: "outputs/m2_lf_matrices"
   m2_weak_labels_dir: "outputs/m2_weak_labels"
   m2_diagnostics: "outputs/m2_diagnostics.json"
+
+split:
+  train_ratio: 0.8
+  validation_ratio: 0.1
+  test_ratio: 0.1
+  seed: 42
+  stratify_by_domain: true
 
 sampling_strategy: natural

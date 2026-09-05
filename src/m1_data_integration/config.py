@@ -9,7 +9,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -35,8 +35,9 @@ class ReviewConfig:
         return self.raw["datasets"]
 
     @property
-    def max_samples(self) -> Dict[str, int]:
-        return self.raw["max_samples_per_dataset"]
+    def max_samples(self) -> Dict[str, Optional[int]]:
+        raw = self.raw["max_samples_per_dataset"]
+        return {k: None if v is None else int(v) for k, v in raw.items()}
 
     @property
     def preprocessing(self) -> Dict[str, Any]:
@@ -65,6 +66,24 @@ class ReviewConfig:
     @property
     def sampling_strategy(self) -> str:
         return self.raw.get("sampling_strategy", "natural")
+
+    @property
+    def split_cfg(self) -> Dict[str, Any]:
+        return self.raw.get("split", {
+            "train_ratio": 0.8,
+            "validation_ratio": 0.1,
+            "test_ratio": 0.1,
+            "seed": 42,
+            "stratify_by_domain": True,
+        })
+
+    @property
+    def mode(self) -> str:
+        """Determine execution mode: 'development' if any max_samples limit is set, else 'full'."""
+        max_samples = self.max_samples
+        if max_samples and any(v is not None for v in max_samples.values()):
+            return "development"
+        return "full"
 
     @property
     def local_datasets(self) -> Dict[str, str]:

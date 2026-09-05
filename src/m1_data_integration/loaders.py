@@ -211,12 +211,12 @@ class DatasetLoader:
     # request fewer records than a previous run.
     CACHE_MIN_ROWS = 200
 
-    def __init__(self, dataset_key: str, dataset_cfg: Dict[str, Any], max_samples: int, seed: int,
+    def __init__(self, dataset_key: str, dataset_cfg: Dict[str, Any], max_samples: Optional[int], seed: int,
                  cache: Optional[LocalDatasetCache] = None):
         self.dataset_key = dataset_key
         self.spec = DATASET_SPECS[dataset_key]
         self.dataset_cfg = dataset_cfg
-        self.max_samples = max_samples
+        self.max_samples = max_samples  # None means unlimited
         self.seed = seed
         self.cache = cache
         self.source_dataset = self.spec["source_dataset"]
@@ -244,7 +244,7 @@ class DatasetLoader:
                     )
 
                     return self._rows_to_records(
-                        rows[: self.max_samples],
+                        rows[: self.max_samples] if self.max_samples else rows,
                         "real_local",
                     )
 
@@ -261,7 +261,9 @@ class DatasetLoader:
         if self.cache is not None:
             cached_rows = self.cache.read(self.dataset_key)
 
-            if cached_rows is not None and len(cached_rows) >= self.max_samples:
+            if cached_rows is not None and (
+                self.max_samples is None or len(cached_rows) >= self.max_samples
+            ):
                 logger.info(
                     "%s: reusing %d cached rows from %s",
                     self.source_dataset,
@@ -270,7 +272,7 @@ class DatasetLoader:
                 )
 
                 return self._rows_to_records(
-                    cached_rows[: self.max_samples],
+                    cached_rows[: self.max_samples] if self.max_samples else cached_rows,
                     "real_cached",
                 )
 
@@ -278,7 +280,10 @@ class DatasetLoader:
         # 3. Existing remote HuggingFace fallback
         # ---------------------------------------------------------
         try:
-            fetch_n = max(self.max_samples, self.CACHE_MIN_ROWS)
+            if self.max_samples is not None:
+                fetch_n = max(self.max_samples, self.CACHE_MIN_ROWS)
+            else:
+                fetch_n = None  # unlimited
 
             rows = self._fetch_rows_from_hf(fetch_n)
 
@@ -293,7 +298,7 @@ class DatasetLoader:
                     self.cache.write(self.dataset_key, rows)
 
                 return self._rows_to_records(
-                    rows[: self.max_samples],
+                    rows[: self.max_samples] if self.max_samples else rows,
                     "real",
                 )
 
@@ -309,8 +314,12 @@ class DatasetLoader:
         # ---------------------------------------------------------
         return self._load_synthetic_fallback()
 
-    def _fetch_rows_from_hf(self, n: int) -> List[Dict[str, Any]]:
-        """Stream up to `n` rows from HF and extract (query, answer) pairs."""
+    def _fetch_rows_from_hf(self, n: Optional[int]) -> List[Dict[str, Any]]:
+        """Stream rows from HF and extract (query, answer) pairs.
+        
+        Args:
+            n: Number of rows to fetch. None means unlimited (fetch all).
+        """
         from datasets import load_dataset
 
         hf_id = self.dataset_cfg["hf_id"]
@@ -320,12 +329,12 @@ class DatasetLoader:
         extract: Callable = self.spec["extract"]
         rows: List[Dict[str, Any]] = []
         for i, row in enumerate(ds):
-            if i >= n:
+            if n is not None and i >= n:
                 break
             query, answer = extract(row)
             rows.append({"row_index": i, "query": str(query), "answer": str(answer)})
         return rows
-    def _fetch_rows_from_local_disk(self, n: int) -> List[Dict[str, Any]]:
+    def _fetch_rows_from_local_disk(self, n: Optional[int]) -> List[Dict[str, Any]]:
         from datasets import load_from_disk
         local_mapping = self.cache.local_datasets if self.cache is not None else {}
 
@@ -359,7 +368,9 @@ class DatasetLoader:
                 )
             ds = ds[self.hf_split]
 
-        n = min(n, len(ds))
+        if n is not None:
+            n = min(n, len(ds))
+            ds = ds.select(range(n))
 
         # Dataset.select() creates a lightweight view over the requested rows.
         ds = ds.select(range(n))
@@ -392,8 +403,9 @@ class DatasetLoader:
         rng = random.Random(self.seed + (hash(self.dataset_key) % 1000))
         templates = self.spec["fallback_templates"]
         kwargs_fn = self.spec["fallback_kwargs"]
+        count = self.max_samples if self.max_samples is not None else len(templates)
         out = []
-        for i in range(self.max_samples):
+        for i in range(count):
             q, a = templates[i % len(templates)]
             q = q.format(**kwargs_fn(rng, i))
             out.append(RawRecord(
