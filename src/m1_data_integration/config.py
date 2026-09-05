@@ -61,6 +61,11 @@ class ReviewConfig:
     @property
     def data_cache(self) -> Dict[str, Any]:
         return self.raw.get("data_cache", {})
+
+    @property
+    def sampling_strategy(self) -> str:
+        return self.raw.get("sampling_strategy", "natural")
+
     @property
     def local_datasets(self) -> Dict[str, str]:
         return self.data_cache.get("local_datasets", {})

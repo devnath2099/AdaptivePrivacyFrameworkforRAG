@@ -2,7 +2,7 @@ seed: 42
 
 datasets:
   healthcare:
-    hf_id: "lavita/ChatDoctor-HealthCareMagic-100k"
+    hf_id: "lavita/ChatDoctor-HealthcareMagic-100k"
     domain: "medical"
     split: "train"
   fiqa:
@@ -91,3 +91,5 @@ output_paths:
   m2_lf_matrix_dir: "outputs/m2_lf_matrices"
   m2_weak_labels_dir: "outputs/m2_weak_labels"
   m2_diagnostics: "outputs/m2_diagnostics.json"
+
+sampling_strategy: natural

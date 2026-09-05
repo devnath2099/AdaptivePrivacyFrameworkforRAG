@@ -42,7 +42,7 @@ def build_lf_matrix(
 
     The random state is seeded for reproducibility.
     """
-    from src.m1_data_integration.pipeline import sample_balanced_by_domain as _sample_balanced
+    from m1_data_integration.pipeline import sample_balanced_by_domain as _sample_balanced
 
     working_records = records
     if balance_domains:
