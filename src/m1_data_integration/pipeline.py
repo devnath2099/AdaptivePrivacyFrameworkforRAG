@@ -361,8 +361,9 @@ def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None) -> M1Result:
     # 6. semantic evidence extraction: eta, delta, rho, epsilon
     emit("semantic_evidence_extraction", "running")
     evidence_cfg = cfg.evidence_cfg
+    n_process = cfg.preprocessing.get("n_process", 1)
     build_evidence_all(deduped, evidence_cfg.get("spacy_model", "en_core_web_sm"),
-                        evidence_cfg.get("regex_patterns", []))
+                        evidence_cfg.get("regex_patterns", []), n_process=n_process)
     emb_cfg = cfg.embeddings_cfg
     build_embeddings_all(deduped, emb_cfg.get("model_name"), emb_cfg.get("batch_size", 16),
                           emb_cfg.get("device", "cpu"))

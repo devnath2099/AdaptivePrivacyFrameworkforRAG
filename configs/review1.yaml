@@ -44,6 +44,7 @@ preprocessing:
   min_text_length: 3
   lowercase_for_dedup: true
   unicode_normalize_form: "NFKC"
+  n_process: 1
 
 evidence:
   spacy_model: "en_core_web_sm"

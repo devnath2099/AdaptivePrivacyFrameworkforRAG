@@ -73,12 +73,14 @@ class EmbeddingEvidenceExtractor:
 def build_embeddings_all(records: List[UnifiedRecord], model_name: str,
                           batch_size: int, device: str) -> None:
     """Attach embedding evidence (in-place) to every record's `.evidence.embedding`."""
+    from tqdm import tqdm
+
     extractor = EmbeddingEvidenceExtractor(model_name, batch_size, device)
     texts = [r.normalized_text for r in records]
     if not texts:
         return
     vectors = extractor.encode(texts)
-    for record, vec in zip(records, vectors):
+    for record, vec in tqdm(zip(records, vectors), total=len(records), desc="Embeddings"):
         if record.evidence is None:
             continue
         record.evidence.embedding = vec.tolist()

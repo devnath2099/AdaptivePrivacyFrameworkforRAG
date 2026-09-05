@@ -119,8 +119,38 @@ def build_evidence_all(
     records: List[UnifiedRecord],
     spacy_model: str,
     active_regex_patterns: List[str],
+    n_process: int = 1,
 ) -> None:
-    """Attach evidence (in-place) to every record's `.evidence` field."""
+    """Attach evidence (in-place) to every record's `.evidence` field.
+    
+    Args:
+        n_process: Number of parallel processes for spaCy. 
+                   1 means sequential. >1 uses nlp.pipe(n_process).
+                   Defaults to 1 (compatible with all environments).
+    """
+    from tqdm import tqdm
+
     extractor = SpacyEvidenceExtractor(spacy_model)
-    for record in records:
-        record.evidence = build_evidence(record, extractor, active_regex_patterns)
+
+    if extractor.available and n_process > 1:
+        # Parallel spaCy processing via nlp.pipe
+        texts = [record.normalized_text for record in records]
+        docs = extractor._nlp.pipe(texts, n_process=n_process, batch_size=16)
+        for i, (record, doc) in enumerate(tqdm(zip(records, docs), total=len(records), desc="Evidence")):
+            entities = [{"text": ent.text, "label": ent.label_} for ent in doc.ents]
+            dependency_relations = [
+                {"token": tok.text, "dep": tok.dep_, "head": tok.head.text}
+                for tok in doc
+                if tok.dep_ not in ("punct",)
+            ][:50]
+            regex_evidence = extract_regex_evidence(record.normalized_text, active_regex_patterns)
+            record.evidence = EvidenceBundle(
+                entities=entities,
+                dependency_relations=dependency_relations,
+                regex_matches=regex_evidence,
+                embedding=None,
+            )
+    else:
+        # Sequential processing
+        for record in tqdm(records, desc="Evidence"):
+            record.evidence = build_evidence(record, extractor, active_regex_patterns)
