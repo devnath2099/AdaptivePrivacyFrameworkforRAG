@@ -52,3 +52,7 @@ class UnifiedRecord:
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         return d
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "UnifiedRecord":
+        return cls(**d)

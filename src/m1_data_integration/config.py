@@ -86,8 +86,8 @@ class ReviewConfig:
         return "full"
 
     @property
-    def local_datasets(self) -> Dict[str, str]:
-        return self.data_cache.get("local_datasets", {})
+    def cache_dir(self) -> str:
+        return self.raw.get("cache", {}).get("dir", "outputs/cache")
 
     def resolve_output(self, key: str) -> Path:
         """Resolve an output path relative to the config file's project root."""

@@ -59,7 +59,7 @@ evidence:
 embeddings:
   model_name: "sentence-transformers/all-MiniLM-L6-v2"
   batch_size: 16
-  device: "cpu"
+  device: "cuda"
 
 label_taxonomy:
   entity_tags:
@@ -101,3 +101,6 @@ split:
   stratify_by_domain: true
 
 sampling_strategy: natural
+
+cache:
+  dir: "outputs/cache"

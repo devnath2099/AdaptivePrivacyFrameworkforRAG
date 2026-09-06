@@ -8,6 +8,7 @@ pipeline stays runnable, and this is logged clearly as a fallback.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from typing import List
 
@@ -71,16 +72,44 @@ class EmbeddingEvidenceExtractor:
 
 
 def build_embeddings_all(records: List[UnifiedRecord], model_name: str,
-                          batch_size: int, device: str) -> None:
-    """Attach embedding evidence (in-place) to every record's `.evidence.embedding`."""
+                          batch_size: int, device: str,
+                          checkpoint_dir: str = "outputs/cache",
+                          partition_id: int = 0,
+                          num_partitions: int = 1) -> None:
+    """Attach embedding evidence (in-place) to every record's `.evidence.embedding`.
+
+    Args:
+        checkpoint_dir: Directory for checkpoint markers.
+        partition_id: This notebook's partition index (0-based).
+        num_partitions: Total number of partitions.
+    """
+    import os
+
     from tqdm import tqdm
 
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    done_path = os.path.join(checkpoint_dir, f"embeddings_done_{partition_id}.marker")
+
+    if os.path.exists(done_path):
+        print(f"[Partition {partition_id}] Embeddings checkpoint exists, skipping")
+        return
+
     extractor = EmbeddingEvidenceExtractor(model_name, batch_size, device)
+
+    # Apply partition filtering
+    if num_partitions > 1:
+        records = records[partition_id::num_partitions]
+        print(f"[Partition {partition_id}] Embedding {len(records)} records")
+
     texts = [r.normalized_text for r in records]
     if not texts:
         return
     vectors = extractor.encode(texts)
-    for record, vec in tqdm(zip(records, vectors), total=len(records), desc="Embeddings"):
+    for record, vec in tqdm(zip(records, vectors), total=len(records), desc=f"Embeddings P{partition_id}"):
         if record.evidence is None:
             continue
         record.evidence.embedding = vec.tolist()
+
+    with open(done_path, "w") as f:
+        json.dump({"n_records": len(records), "complete": True}, f)
+    print(f"[Partition {partition_id}] Embeddings complete for {len(records)} records")

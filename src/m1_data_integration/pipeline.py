@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -23,6 +24,10 @@ from .loaders import load_all_datasets
 from .schemas import UnifiedRecord
 
 logger = logging.getLogger(__name__)
+
+CACHE_DIR_NAME = "cache"
+EVIDENCE_CACHE_FILE = "deduped_with_evidence.jsonl"
+EMBEDDINGS_CACHE_FILE = "embeddings_done.jsonl"
 
 M1_STAGES = [
     "dataset_loading",
@@ -257,6 +262,9 @@ def _reconcile_counts(
             })
 
     return reconciliation
+
+
+def sample_balanced_by_domain(records: List[UnifiedRecord], seed: int = 42) -> List[UnifiedRecord]:
     """Return a balanced sample where each domain is represented proportionally.
 
     Aims for roughly equal representation per domain. If a domain has fewer
@@ -295,19 +303,84 @@ def _reconcile_counts(
     return balanced
 
 
-def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None) -> M1Result:
+def _get_cache_dir(cfg: ReviewConfig) -> str:
+    cache_dir = cfg.cache_dir
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+
+def _load_cached_evidence(cfg: ReviewConfig, partition_id: int = 0, num_partitions: int = 1) -> Optional[List[UnifiedRecord]]:
+    """Load records with evidence from checkpoint if partition is complete."""
+    cache_dir = _get_cache_dir(cfg)
+    done_path = os.path.join(cache_dir, f"evidence_done_{partition_id}.marker")
+    checkpoint_path = os.path.join(cache_dir, f"evidence_checkpoint_{partition_id}.jsonl")
+
+    if not os.path.exists(done_path):
+        return None
+
+    # Load all records from checkpoint
+    records: List[UnifiedRecord] = []
+    try:
+        with open(checkpoint_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                record = UnifiedRecord.from_dict(data)
+                records.append(record)
+        logger.info("Loaded %d cached records with evidence (partition %d/%d)", len(records), partition_id, num_partitions)
+        return records
+    except Exception as exc:
+        logger.warning("Failed to load evidence cache (%s), recomputing", exc)
+        return None
+
+
+def _save_cached_evidence(cfg: ReviewConfig, records: List[UnifiedRecord],
+                           partition_id: int = 0, num_partitions: int = 1) -> None:
+    """Save deduped records with evidence to cache."""
+    cache_dir = _get_cache_dir(cfg)
+    os.makedirs(cache_dir, exist_ok=True)
+    checkpoint_path = os.path.join(cache_dir, f"evidence_checkpoint_{partition_id}.jsonl")
+    done_path = os.path.join(cache_dir, f"evidence_done_{partition_id}.marker")
+    with open(checkpoint_path, "w", encoding="utf-8") as fh:
+        for r in records:
+            fh.write(json.dumps(r.to_dict(), default=str) + "\n")
+    with open(done_path, "w") as f:
+        json.dump({"n_records": len(records), "complete": True}, f)
+    logger.info("Saved %d records with evidence to cache (partition %d/%d)", len(records), partition_id, num_partitions)
+
+
+def _load_embeddings_cache(cfg: ReviewConfig, partition_id: int = 0) -> bool:
+    cache_dir = _get_cache_dir(cfg)
+    return os.path.exists(os.path.join(cache_dir, f"embeddings_done_{partition_id}.marker"))
+
+
+def _save_embeddings_cache(cfg: ReviewConfig, n_records: int, partition_id: int = 0) -> None:
+    cache_dir = _get_cache_dir(cfg)
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(os.path.join(cache_dir, f"embeddings_done_{partition_id}.marker"), "w") as f:
+        json.dump({"n_records": n_records, "complete": True}, f)
+
+
+def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None,
+           partition_id: int = 0, num_partitions: int = 1) -> M1Result:
     """Execute the full M1 flow.
 
     `on_stage(stage_name, status, payload)` is an optional callback used
     by the UI to render live Pending/Running/Completed status; it must
     never change pipeline behaviour.
+
+    Args:
+        partition_id: This notebook's partition index (0-based).
+        num_partitions: Total number of partitions for multi-notebook processing.
     """
     def emit(stage: str, status: str, payload: Any = None):
         if on_stage is not None:
             on_stage(stage, status, payload)
 
     # Log execution mode
-    logger.info("M1 Execution Mode: %s", cfg.mode)
+    logger.info("M1 Execution Mode: %s, Partition %d/%d", cfg.mode, partition_id, num_partitions)
 
     stats: Dict[str, Any] = {}
     snapshots: Dict[str, Any] = {}
@@ -360,13 +433,29 @@ def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None) -> M1Result:
 
     # 6. semantic evidence extraction: eta, delta, rho, epsilon
     emit("semantic_evidence_extraction", "running")
-    evidence_cfg = cfg.evidence_cfg
-    n_process = cfg.preprocessing.get("n_process", 1)
-    build_evidence_all(deduped, evidence_cfg.get("spacy_model", "en_core_web_sm"),
-                        evidence_cfg.get("regex_patterns", []), n_process=n_process)
+    checkpoint_dir = str(cfg.resolve_output("m1_dataset").parent / "cache")
+    cached_records = _load_cached_evidence(cfg, partition_id=partition_id, num_partitions=num_partitions)
+    if cached_records is not None:
+        deduped = cached_records
+        logger.info("Using cached evidence for %d records", len(deduped))
+    else:
+        evidence_cfg = cfg.evidence_cfg
+        n_process = cfg.preprocessing.get("n_process", 1)
+        build_evidence_all(deduped, evidence_cfg.get("spacy_model", "en_core_web_sm"),
+                            evidence_cfg.get("regex_patterns", []), n_process=n_process,
+                            checkpoint_dir=checkpoint_dir, partition_id=partition_id,
+                            num_partitions=num_partitions)
+        _save_cached_evidence(cfg, deduped, partition_id=partition_id, num_partitions=num_partitions)
+
     emb_cfg = cfg.embeddings_cfg
-    build_embeddings_all(deduped, emb_cfg.get("model_name"), emb_cfg.get("batch_size", 16),
-                          emb_cfg.get("device", "cpu"))
+    if _load_embeddings_cache(cfg, partition_id=partition_id):
+        logger.info("Using cached embeddings")
+    else:
+        build_embeddings_all(deduped, emb_cfg.get("model_name"), emb_cfg.get("batch_size", 16),
+                              emb_cfg.get("device", "cuda"),
+                              checkpoint_dir=checkpoint_dir, partition_id=partition_id,
+                              num_partitions=num_partitions)
+        _save_embeddings_cache(cfg, len(deduped), partition_id=partition_id)
 
     entity_counts = sum(len(r.evidence.entities) for r in deduped if r.evidence)
     regex_hit_counts: Dict[str, int] = {}
@@ -525,3 +614,115 @@ def save_m1_outputs(result: M1Result, cfg: ReviewConfig) -> None:
         json.dump(result.statistics, fh, indent=2, default=str)
 
     logger.info("M1 outputs saved: %s, %s", dataset_path, stats_path)
+
+
+def merge_partitions(cfg: ReviewConfig, num_partitions: int, on_stage: Optional[callable] = None) -> M1Result:
+    """Merge all partition checkpoints into a single unified dataset.
+    
+    This is called after all N notebooks have completed their partition
+    processing. It loads every partition's evidence_checkpoint file,
+    combines them, runs the split stage, and saves final outputs.
+    """
+    def emit(stage: str, status: str, payload: Any = None):
+        if on_stage is not None:
+            on_stage(stage, status, payload)
+
+    import random
+
+    logger.info("Merging %d partitions", num_partitions)
+    cache_dir = _get_cache_dir(cfg)
+
+    all_records: List[UnifiedRecord] = []
+    for pid in range(num_partitions):
+        checkpoint_path = os.path.join(cache_dir, f"evidence_checkpoint_{pid}.jsonl")
+        if not os.path.exists(checkpoint_path):
+            logger.warning("Missing checkpoint for partition %d", pid)
+            continue
+        with open(checkpoint_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                record = UnifiedRecord.from_dict(data)
+                all_records.append(record)
+
+    logger.info("Merged %d records from %d partitions", len(all_records), num_partitions)
+
+    # Now run embeddings for all records (or load cached embeddings)
+    emb_cfg = cfg.embeddings_cfg
+    if not all(_load_embeddings_cache(cfg, partition_id=pid) for pid in range(num_partitions)):
+        # Some embeddings missing, compute all
+        from .embeddings import build_embeddings_all
+        build_embeddings_all(all_records, emb_cfg.get("model_name"),
+                              emb_cfg.get("batch_size", 16), emb_cfg.get("device", "cuda"))
+
+    # Run split on merged records
+    split_cfg = cfg.split_cfg
+    train_records, val_records, test_records = _domain_stratified_split(
+        all_records,
+        train_ratio=split_cfg.get("train_ratio", 0.8),
+        validation_ratio=split_cfg.get("validation_ratio", 0.1),
+        test_ratio=split_cfg.get("test_ratio", 0.1),
+        seed=split_cfg.get("seed", 42),
+        stratify_by_domain=split_cfg.get("stratify_by_domain", True),
+    )
+
+    # Leakage check
+    from .pipeline import _check_split_leakage
+    leakage = _check_split_leakage(train_records, val_records, test_records)
+
+    # Reconciliation
+    from .pipeline import _reconcile_counts
+    raw_by_dataset = load_all_datasets(cfg)
+    raw_counts = {k: len(v) for k, v in raw_by_dataset.items()}
+    cleaned_count = len(all_records)
+    deduped_count = len(all_records)
+    dedup_stats = {"n_deduped": deduped_count}
+    reconciliation = _reconcile_counts(
+        raw_by_dataset=raw_by_dataset, raw_counts=raw_counts,
+        cleaned_count=cleaned_count, removed_by_cleaning=0,
+        deduped_count=deduped_count, dedup_stats=dedup_stats,
+        train_records=train_records, val_records=val_records, test_records=test_records,
+    )
+
+    # Build result
+    stats: Dict[str, Any] = {}
+    stats["split_leakage"] = leakage
+    stats["reconciliation"] = reconciliation
+    stats["final_record_count"] = len(all_records)
+    stats["mode"] = "development" if cfg.mode == "development" else "full"
+    stats["num_partitions"] = num_partitions
+
+    train_dist = _domain_distribution(train_records)
+    val_dist = _domain_distribution(val_records)
+    test_dist = _domain_distribution(test_records)
+    stats["split"] = {
+        "train_count": len(train_records),
+        "validation_count": len(val_records),
+        "test_count": len(test_records),
+        "train_domain_distribution": train_dist,
+        "validation_domain_distribution": val_dist,
+        "test_domain_distribution": test_dist,
+        "stratify_by_domain": split_cfg.get("stratify_by_domain", True),
+    }
+
+    all_records = train_records + val_records + test_records
+    for r in all_records:
+        r.split = None  # Already assigned above
+
+    # Assign split back
+    for r in train_records:
+        r.split = "train"
+    for r in val_records:
+        r.split = "validation"
+    for r in test_records:
+        r.split = "test"
+
+    result = M1Result(records=all_records, statistics=stats)
+
+    # Save outputs
+    save_m1_outputs(result, cfg)
+
+    logger.info("Merged M1 outputs saved")
+    return result

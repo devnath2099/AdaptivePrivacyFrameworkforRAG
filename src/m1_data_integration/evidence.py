@@ -6,6 +6,7 @@ labeling functions consume as input signals.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any, Dict, List
@@ -120,37 +121,162 @@ def build_evidence_all(
     spacy_model: str,
     active_regex_patterns: List[str],
     n_process: int = 1,
+    checkpoint_dir: str = "outputs/cache",
+    checkpoint_interval_minutes: int = 10,
+    partition_id: int = 0,
+    num_partitions: int = 1,
 ) -> None:
     """Attach evidence (in-place) to every record's `.evidence` field.
-    
+
+    Supports:
+    - Parallel spaCy via nlp.pipe(n_process)
+    - Checkpoint saving every ~10 minutes so progress isn't lost
+    - Partitioning for multi-notebook processing (partition_id/num_partitions)
+
     Args:
-        n_process: Number of parallel processes for spaCy. 
-                   1 means sequential. >1 uses nlp.pipe(n_process).
-                   Defaults to 1 (compatible with all environments).
+        n_process: Number of parallel processes for spaCy. 1 = sequential.
+        checkpoint_dir: Directory to save/load checkpoints.
+        checkpoint_interval_minutes: Save checkpoint every N minutes.
+        partition_id: This notebook's partition index (0-based).
+        num_partitions: Total number of partitions (notebooks).
     """
+    import os
+    import time
+
     from tqdm import tqdm
+
+    # Apply partition filtering
+    if num_partitions > 1:
+        records = records[partition_id::num_partitions]
+        print(f"[Partition {partition_id}/{num_partitions}] Processing {len(records)} records")
+
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    checkpoint_path = os.path.join(checkpoint_dir, f"evidence_checkpoint_{partition_id}.jsonl")
+    done_path = os.path.join(checkpoint_dir, f"evidence_done_{partition_id}.marker")
+
+    # Check for existing checkpoint
+    if os.path.exists(done_path):
+        print(f"[Partition {partition_id}] Checkpoint already exists, skipping evidence")
+        # Load cached records back into the list
+        _load_partition_checkpoint(records, checkpoint_path, partition_id)
+        return
 
     extractor = SpacyEvidenceExtractor(spacy_model)
 
     if extractor.available and n_process > 1:
-        # Parallel spaCy processing via nlp.pipe
         texts = [record.normalized_text for record in records]
         docs = extractor._nlp.pipe(texts, n_process=n_process, batch_size=16)
-        for i, (record, doc) in enumerate(tqdm(zip(records, docs), total=len(records), desc="Evidence")):
-            entities = [{"text": ent.text, "label": ent.label_} for ent in doc.ents]
-            dependency_relations = [
-                {"token": tok.text, "dep": tok.dep_, "head": tok.head.text}
-                for tok in doc
-                if tok.dep_ not in ("punct",)
-            ][:50]
-            regex_evidence = extract_regex_evidence(record.normalized_text, active_regex_patterns)
-            record.evidence = EvidenceBundle(
-                entities=entities,
-                dependency_relations=dependency_relations,
-                regex_matches=regex_evidence,
-                embedding=None,
-            )
+        _process_with_checkpoint(records, docs, extractor, active_regex_patterns,
+                                  checkpoint_path, done_path, checkpoint_interval_minutes, partition_id)
     else:
-        # Sequential processing
-        for record in tqdm(records, desc="Evidence"):
-            record.evidence = build_evidence(record, extractor, active_regex_patterns)
+        _process_with_checkpoint_sequential(records, extractor, active_regex_patterns,
+                                             checkpoint_path, done_path, checkpoint_interval_minutes, partition_id)
+
+
+def _load_partition_checkpoint(records: List[UnifiedRecord], checkpoint_path: str, partition_id: int) -> None:
+    """Load cached evidence from checkpoint file back into records (in-place)."""
+    if not os.path.exists(checkpoint_path):
+        return
+    loaded = 0
+    cached_records: List[UnifiedRecord] = []
+    with open(checkpoint_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            record = UnifiedRecord.from_dict(data)
+            if record.evidence is not None:
+                loaded += 1
+            cached_records.append(record)
+    # Update records in-place
+    records.clear()
+    records.extend(cached_records)
+    print(f"[Partition {partition_id}] Loaded {loaded} records from checkpoint")
+
+
+def _process_with_checkpoint_sequential(
+    records: List[UnifiedRecord],
+    extractor,
+    active_regex_patterns: List[str],
+    checkpoint_path: str,
+    done_path: str,
+    interval_minutes: int,
+    partition_id: int,
+) -> None:
+    """Process records sequentially with periodic checkpoint saves."""
+    import time
+    from tqdm import tqdm
+
+    total = len(records)
+    last_checkpoint = time.time()
+    interval_seconds = interval_minutes * 60
+
+    for i, record in enumerate(tqdm(records, desc=f"Evidence P{partition_id}")):
+        record.evidence = build_evidence(record, extractor, active_regex_patterns)
+
+        # Save checkpoint every interval_minutes
+        now = time.time()
+        if now - last_checkpoint >= interval_seconds:
+            _save_checkpoint(records[:i + 1], checkpoint_path, partition_id)
+            last_checkpoint = now
+            print(f"[Partition {partition_id}] Checkpoint saved at record {i + 1}/{total}")
+
+    # Final checkpoint
+    _save_checkpoint(records, checkpoint_path, partition_id)
+    with open(done_path, "w") as f:
+        json.dump({"n_records": len(records), "complete": True}, f)
+    print(f"[Partition {partition_id}] Evidence complete for {len(records)} records")
+
+
+def _process_with_checkpoint(
+    records: List[UnifiedRecord],
+    docs,
+    extractor,
+    active_regex_patterns: List[str],
+    checkpoint_path: str,
+    done_path: str,
+    interval_minutes: int,
+    partition_id: int,
+) -> None:
+    """Process with parallel spaCy and periodic checkpoint saves."""
+    import time
+    from tqdm import tqdm
+
+    total = len(records)
+    last_checkpoint = time.time()
+    interval_seconds = interval_minutes * 60
+    texts = [record.normalized_text for record in records]
+
+    for i, (record, doc) in enumerate(tqdm(zip(records, docs), total=total, desc=f"Evidence P{partition_id}")):
+        entities = [{"text": ent.text, "label": ent.label_} for ent in doc.ents]
+        dependency_relations = [
+            {"token": tok.text, "dep": tok.dep_, "head": tok.head.text}
+            for tok in doc
+            if tok.dep_ not in ("punct",)
+        ][:50]
+        regex_evidence = extract_regex_evidence(record.normalized_text, active_regex_patterns)
+        record.evidence = EvidenceBundle(
+            entities=entities,
+            dependency_relations=dependency_relations,
+            regex_matches=regex_evidence,
+            embedding=None,
+        )
+
+        now = time.time()
+        if now - last_checkpoint >= interval_seconds:
+            _save_checkpoint(records[:i + 1], checkpoint_path, partition_id)
+            last_checkpoint = now
+            print(f"[Partition {partition_id}] Checkpoint saved at record {i + 1}/{total}")
+
+    _save_checkpoint(records, checkpoint_path, partition_id)
+    with open(done_path, "w") as f:
+        json.dump({"n_records": len(records), "complete": True}, f)
+    print(f"[Partition {partition_id}] Evidence complete for {len(records)} records")
+
+
+def _save_checkpoint(records: List[UnifiedRecord], checkpoint_path: str, partition_id: int) -> None:
+    """Save current state of records to checkpoint file."""
+    with open(checkpoint_path, "w", encoding="utf-8") as fh:
+        for r in records:
+            fh.write(json.dumps(r.to_dict(), default=str) + "\n")
