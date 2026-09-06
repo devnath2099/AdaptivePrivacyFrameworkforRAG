@@ -643,6 +643,7 @@ def merge_partitions(cfg: ReviewConfig, num_partitions: int, on_stage: Optional[
             for line in fh:
                 total_lines += 1
     print(f"Loading {total_lines} records from {num_partitions} partitions...")
+    seen_ids: set = set()
     loaded = 0
     for pid in range(num_partitions):
         checkpoint_path = os.path.join(cache_dir, f"evidence_checkpoint_{pid}.jsonl")
@@ -655,12 +656,16 @@ def merge_partitions(cfg: ReviewConfig, num_partitions: int, on_stage: Optional[
                 if not line:
                     continue
                 data = json.loads(line)
+                record_id = data.get("record_id", "")
+                if record_id in seen_ids:
+                    continue
+                seen_ids.add(record_id)
                 record = UnifiedRecord.from_dict(data)
                 all_records.append(record)
                 loaded += 1
         print(f"  Partition {pid}: loaded ({loaded}/{total_lines})")
 
-    logger.info("Merged %d records from %d partitions", len(all_records), num_partitions)
+    logger.info("Merged %d unique records from %d partitions", len(all_records), num_partitions)
 
     # Now run embeddings for all records (or load cached embeddings)
     emb_cfg = cfg.embeddings_cfg
