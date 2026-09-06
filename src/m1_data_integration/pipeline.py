@@ -445,7 +445,6 @@ def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None,
                             evidence_cfg.get("regex_patterns", []), n_process=n_process,
                             checkpoint_dir=checkpoint_dir, partition_id=partition_id,
                             num_partitions=num_partitions)
-        _save_cached_evidence(cfg, deduped, partition_id=partition_id, num_partitions=num_partitions)
 
     emb_cfg = cfg.embeddings_cfg
     if _load_embeddings_cache(cfg, partition_id=partition_id):
@@ -455,7 +454,10 @@ def run_m1(cfg: ReviewConfig, on_stage: Optional[callable] = None,
                               emb_cfg.get("device", "cuda"),
                               checkpoint_dir=checkpoint_dir, partition_id=partition_id,
                               num_partitions=num_partitions)
-        _save_embeddings_cache(cfg, len(deduped), partition_id=partition_id)
+
+    # Save checkpoint AFTER embeddings so checkpoint includes embeddings
+    _save_cached_evidence(cfg, deduped, partition_id=partition_id, num_partitions=num_partitions)
+    _save_embeddings_cache(cfg, len(deduped), partition_id=partition_id)
 
     entity_counts = sum(len(r.evidence.entities) for r in deduped if r.evidence)
     regex_hit_counts: Dict[str, int] = {}
