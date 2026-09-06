@@ -3,7 +3,7 @@ import sys, json, os
 from pathlib import Path
 sys.path.insert(0, "src")
 
-from m1_data_integration.config import load_config
+from m1_data_integration.config import load_config, ReviewConfig
 
 def audit_m2(cfg: ReviewConfig):
     print("=" * 60)

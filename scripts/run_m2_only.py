@@ -5,7 +5,6 @@ sys.path.insert(0, "src")
 from m1_data_integration.config import load_config
 from m1_data_integration.pipeline import merge_partitions
 from m2_label_generation.pipeline import run_m2, save_m2_outputs
-from scripts.audit_m2 import audit_m2
 
 cfg = load_config("configs/review1.yaml")
 
@@ -20,4 +19,9 @@ save_m2_outputs(m2_result, cfg, record_ids)
 print("M2 complete!")
 
 print("\n=== Step 3: Audit M2 ===")
-audit_m2(cfg)
+with open(cfg.resolve_output("m2_diagnostics")) as f:
+    d = json.load(f)
+print(f"Dimensions: {len(d)}")
+for dim, diag in d.items():
+    print(f"  {dim}: n={diag.get('n_records',0)}, entropy={diag.get('mean_entropy',0):.3f}, conf={diag.get('mean_max_confidence',0):.3f}, uncertain={diag.get('n_uncertain_records',0)}")
+print("M2 AUDIT DONE")
