@@ -157,8 +157,14 @@ def build_evidence_all(
     # Check for existing checkpoint
     if os.path.exists(done_path):
         print(f"[Partition {partition_id}] Checkpoint already exists, skipping evidence")
-        # Load cached records back into the list
         _load_partition_checkpoint(records, checkpoint_path, partition_id)
+        return
+
+    # Check for partial checkpoint — resume from where we left off
+    if os.path.exists(checkpoint_path):
+        print(f"[Partition {partition_id}] Resuming from partial checkpoint")
+        _resume_from_checkpoint(records, checkpoint_path, extractor, active_regex_patterns,
+                                  checkpoint_path, done_path, partition_id)
         return
 
     extractor = SpacyEvidenceExtractor(spacy_model)
@@ -171,6 +177,94 @@ def build_evidence_all(
     else:
         _process_with_checkpoint_sequential(records, extractor, active_regex_patterns,
                                              checkpoint_path, done_path, checkpoint_interval_minutes, partition_id)
+
+
+def _resume_from_checkpoint(
+    records: List[UnifiedRecord],
+    checkpoint_path: str,
+    extractor,
+    active_regex_patterns: List[str],
+    save_path: str,
+    done_path: str,
+    partition_id: int,
+) -> None:
+    """Load cached records and process only the remaining ones."""
+    import time
+    from tqdm import tqdm
+
+    # Load cached records
+    cached_records: List[UnifiedRecord] = []
+    cached_ids: set = set()
+    with open(checkpoint_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            record = UnifiedRecord.from_dict(data)
+            # Convert evidence dict to EvidenceBundle
+            if record.evidence is not None and isinstance(record.evidence, dict):
+                from .schemas import EvidenceBundle
+                record.evidence = EvidenceBundle(
+                    entities=record.evidence.get("entities", []),
+                    dependency_relations=record.evidence.get("dependency_relations", []),
+                    regex_matches=record.evidence.get("regex_matches", {}),
+                    embedding=record.evidence.get("embedding", None),
+                )
+            cached_records.append(record)
+            cached_ids.add(record.record_id)
+
+    print(f"[Partition {partition_id}] Loaded {len(cached_records)} cached records, resuming")
+
+    # Filter to only unprocessed records
+    remaining = [r for r in records if r.record_id not in cached_ids]
+    print(f"[Partition {partition_id}] {len(remaining)} records remaining")
+
+    if not remaining:
+        # All done, just save marker
+        with open(done_path, "w") as f:
+            json.dump({"n_records": len(cached_records), "complete": True}, f)
+        return
+
+    total = len(records)
+    last_checkpoint = time.time()
+    interval_seconds = checkpoint_interval_minutes * 60
+
+    # Process remaining records
+    if extractor.available:
+        texts = [r.normalized_text for r in remaining]
+        docs = extractor._nlp.pipe(texts, batch_size=16)
+        for i, (record, doc) in enumerate(tqdm(zip(remaining, docs), total=len(remaining), desc=f"Evidence P{partition_id} (resume)")):
+            entities = [{"text": ent.text, "label": ent.label_} for ent in doc.ents]
+            dependency_relations = [
+                {"token": tok.text, "dep": tok.dep_, "head": tok.head.text}
+                for tok in doc
+                if tok.dep_ not in ("punct",)
+            ][:50]
+            regex_evidence = extract_regex_evidence(record.normalized_text, active_regex_patterns)
+            record.evidence = EvidenceBundle(
+                entities=entities,
+                dependency_relations=dependency_relations,
+                regex_matches=regex_evidence,
+                embedding=None,
+            )
+            now = time.time()
+            if now - last_checkpoint >= interval_seconds:
+                _save_checkpoint(records[:len(cached_records) + i + 1], save_path, partition_id)
+                last_checkpoint = now
+    else:
+        for i, record in enumerate(tqdm(remaining, desc=f"Evidence P{partition_id} (resume)")):
+            record.evidence = build_evidence(record, extractor, active_regex_patterns)
+            now = time.time()
+            if now - last_checkpoint >= interval_seconds:
+                _save_checkpoint(records[:len(cached_records) + i + 1], save_path, partition_id)
+                last_checkpoint = now
+
+    # Save final checkpoint
+    _save_checkpoint(records, save_path, partition_id)
+    with open(done_path, "w") as f:
+        json.dump({"n_records": len(records), "complete": True}, f)
+    print(f"[Partition {partition_id}] Evidence complete for {len(records)} records")
 
 
 def _load_partition_checkpoint(records: List[UnifiedRecord], checkpoint_path: str, partition_id: int) -> None:
@@ -186,7 +280,15 @@ def _load_partition_checkpoint(records: List[UnifiedRecord], checkpoint_path: st
                 continue
             data = json.loads(line)
             record = UnifiedRecord.from_dict(data)
-            if record.evidence is not None:
+            # Convert evidence dict back to EvidenceBundle
+            if record.evidence is not None and isinstance(record.evidence, dict):
+                from .schemas import EvidenceBundle
+                record.evidence = EvidenceBundle(
+                    entities=record.evidence.get("entities", []),
+                    dependency_relations=record.evidence.get("dependency_relations", []),
+                    regex_matches=record.evidence.get("regex_matches", {}),
+                    embedding=record.evidence.get("embedding", None),
+                )
                 loaded += 1
             cached_records.append(record)
     # Update records in-place
