@@ -633,6 +633,17 @@ def merge_partitions(cfg: ReviewConfig, num_partitions: int, on_stage: Optional[
     cache_dir = _get_cache_dir(cfg)
 
     all_records: List[UnifiedRecord] = []
+    total_lines = 0
+    for pid in range(num_partitions):
+        checkpoint_path = os.path.join(cache_dir, f"evidence_checkpoint_{pid}.jsonl")
+        if not os.path.exists(checkpoint_path):
+            logger.warning("Missing checkpoint for partition %d", pid)
+            continue
+        with open(checkpoint_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                total_lines += 1
+    print(f"Loading {total_lines} records from {num_partitions} partitions...")
+    loaded = 0
     for pid in range(num_partitions):
         checkpoint_path = os.path.join(cache_dir, f"evidence_checkpoint_{pid}.jsonl")
         if not os.path.exists(checkpoint_path):
@@ -646,6 +657,8 @@ def merge_partitions(cfg: ReviewConfig, num_partitions: int, on_stage: Optional[
                 data = json.loads(line)
                 record = UnifiedRecord.from_dict(data)
                 all_records.append(record)
+                loaded += 1
+        print(f"  Partition {pid}: loaded ({loaded}/{total_lines})")
 
     logger.info("Merged %d records from %d partitions", len(all_records), num_partitions)
 
