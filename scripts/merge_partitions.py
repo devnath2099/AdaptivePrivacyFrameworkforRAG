@@ -16,7 +16,7 @@ from m1_data_integration.config import load_config
 
 def main():
     parser = argparse.ArgumentParser(description="Merge M1 partition outputs")
-    parser.add_argument("--num-partitions", type=int, required=True, help="Total number of partitions")
+    parser.add_argument("--num-partitions", type=int, default=4, help="Total number of partitions")
     parser.add_argument("--config", type=str, default="configs/review1.yaml", help="Config file path")
     args = parser.parse_args()
 
