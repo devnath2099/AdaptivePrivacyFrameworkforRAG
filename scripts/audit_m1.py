@@ -10,15 +10,37 @@ def audit_m1(cfg: ReviewConfig):
     print("M1 OUTPUT AUDIT")
     print("=" * 60)
 
-    # Load unified dataset
     dataset_path = cfg.resolve_output("m1_dataset")
     records = []
-    with open(dataset_path, "r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
+    out_dir = dataset_path.parent
+    split_files = [out_dir / f"m1_{s}_dataset.jsonl" for s in ("train", "validation", "test")]
+    # Prefer the per-split files (what a full run writes and what is downloaded);
+    # fall back to the unified file only if no split files exist.
+    if all(sp.exists() for sp in split_files):
+        for sp in split_files:
+            with open(sp, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    records.append(json.loads(line))
+    elif dataset_path.exists() and dataset_path.stat().st_size > 0:
+        with open(dataset_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                records.append(json.loads(line))
+    else:
+        for sp in split_files:
+            if not sp.exists():
                 continue
-            records.append(json.loads(line))
+            with open(sp, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    records.append(json.loads(line))
 
     print(f"\n1. Total records: {len(records)}")
 
@@ -99,6 +121,20 @@ def audit_m1(cfg: ReviewConfig):
             print(f"   source_key {pair}: {count} overlaps")
 
     print(f"\n9. Reconciliation: {stats.get('reconciliation', {}).get('checks_passed', 'N/A')}")
+
+    # Print the full 3-stage chain account if present
+    recon = stats.get("reconciliation", {})
+    if recon and recon.get("mismatches") is not None:
+        if recon.get("checks_passed"):
+            print("   Stage chain verified:")
+            raw_tot = sum(stats.get("raw_records_per_dataset", {}).values())
+            print(f"     raw -> cleaned, cleaning removals: tracked")
+            print(f"     cleaned -> deduplicated, duplicate removals: tracked")
+            print(f"     deduplicated -> train+val+test: tracked")
+        else:
+            print("   Reconciliation mismatches:")
+            for m in recon.get("mismatches", []):
+                print(f"     - {m.get('check')}: expected {m.get('expected')}, actual {m.get('actual')} ({m.get('details','')})")
 
     print(f"\n{'=' * 60}")
     if has_evidence / len(records) > 0.9 and has_embedding / len(records) > 0.9 and stats.get("reconciliation", {}).get("checks_passed"):

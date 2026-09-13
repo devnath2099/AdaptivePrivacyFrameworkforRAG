@@ -29,6 +29,7 @@ class DimensionWeakLabelResult:
     generative_result: GenerativeModelResult
     weak_labels: np.ndarray  # L_w, shape (n, K)
     label_names: List[str]
+    _is_multi_label: bool = False
 
 
 def synthesize_weak_labels_for_dimension(
@@ -54,6 +55,7 @@ def _synthesize_multi_class(
         generative_result=gen_result,
         weak_labels=gen_result.probs,
         label_names=spec.labels,
+        _is_multi_label=False,
     )
 
 
@@ -107,6 +109,7 @@ def _synthesize_multi_label(
         generative_result=combined_gen_result,
         weak_labels=category_probs,
         label_names=spec.labels,
+        _is_multi_label=True,
     )
 
 

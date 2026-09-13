@@ -112,3 +112,50 @@ def test_multi_label_lf_matrices_valid(small_cfg, m1_result):
                                          is_multi_label=False)
             result = build_lf_matrix(m1_result.records, lfs, binary_spec)
             assert set(np.unique(result.matrix).tolist()).issubset({ABSTAIN, 0, 1})
+
+
+def test_multi_label_categories_have_independent_probabilities(m2_result):
+    """Multi-label dimensions must retain independent per-category probabilities:
+    a record is allowed to be positive for multiple categories, so the weak-label
+    rows must NOT be forced into one exclusive argmax assignment, and the columns
+    must be mutually independent (a row may sum to > 1.0)."""
+    for dim, n_categories in (("entity_tags", 4), ("threat_content", 3)):
+        res = m2_result.dimension_results[dim]
+        assert res._is_multi_label is True
+        # shape is (n, n_categories) with each column an independent P(present)
+        assert res.weak_labels.shape[1] == n_categories
+        # independence: at least one row must have two or more categories >= 0.5
+        # (guaranteed by the synthetic fixture which mixes entity types).
+        positives = res.weak_labels >= 0.5
+        assert np.any(positives.sum(axis=1) >= 2), \
+            f"{dim} should allow multi-label co-occurrence but none found"
+
+
+def test_multi_label_diagnostics_preserve_independent_summary(m2_result):
+    """The diagnostics summary must NOT report an exclusive argmax distribution
+    for multi-label dimensions. Instead it reports per_category_statistics and
+    co_occurrence (independent per-category results)."""
+    for dim in ("entity_tags", "threat_content"):
+        diag = m2_result.diagnostics[dim]
+        # 'label_distribution' must be the multi-label summary dict, not a flat
+        # per-class exclusive count.
+        assert "per_category_statistics" in diag["label_distribution"]
+        assert "co_occurrence" in diag["label_distribution"]
+        # every category must carry mean/median/std/min/max/quantiles/above_threshold
+        for cat, stats in diag["label_distribution"]["per_category_statistics"].items():
+            for key in ("mean", "median", "std", "min", "max", "quantiles", "above_threshold"):
+                assert key in stats, f"missing '{key}' for {dim}/{cat}"
+        # co-occurrence keys
+        for key in ("zero_positive_records", "exactly_one_positive_record",
+                    "two_positive_records", "three_or_more_positive_records"):
+            assert key in diag["label_distribution"]["co_occurrence"]
+
+
+def test_single_label_dimensions_still_argmax_exclusive(m2_result):
+    """Single-label multi-class dimensions retain a proper distribution that
+    sums to the record count."""
+    for dim in ("sensitivity", "intent", "disclosure_scope"):
+        diag = m2_result.diagnostics[dim]
+        dist = diag["label_distribution"]
+        assert "positive_counts" not in dist  # not multi-label
+        assert sum(dist.values()) == diag["n_records"]

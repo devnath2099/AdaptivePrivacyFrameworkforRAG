@@ -5,6 +5,29 @@ sys.path.insert(0, "src")
 
 from m1_data_integration.config import load_config, ReviewConfig
 
+
+def _print_label_summary(dim: str, label_dist: dict):
+    """Render the label distribution; multi-label dims get per-category stats."""
+    if "per_category_statistics" in label_dist:
+        print(f"   Multi-label categories (independent):")
+        for cat, st in label_dist["per_category_statistics"].items():
+            q = st.get("quantiles", {})
+            ath = st.get("above_threshold", {})
+            print(f"     {cat}:")
+            print(f"       mean={st.get('mean', 0):.4f} median={st.get('median', 0):.4f} "
+                  f"std={st.get('std', 0):.4f} min={st.get('min', 0):.4f} max={st.get('max', 0):.4f}")
+            print(f"       quantiles: " + " ".join(f"{k}={v:.4f}" for k, v in q.items()))
+            for t, info in ath.items():
+                print(f"       {t}: {info['count']} ({info['proportion']*100:.2f}%)")
+        co = label_dist.get("co_occurrence", {})
+        print(f"     co-occurrence: zero={co.get('zero_positive_records')} "
+              f"one={co.get('exactly_one_positive_record')} "
+              f"two={co.get('two_positive_records')} "
+              f">=3={co.get('three_or_more_positive_records')}")
+    else:
+        print(f"   Label Distribution (argmax): {label_dist}")
+
+
 def audit_m2(cfg: ReviewConfig):
     print("=" * 60)
     print("M2 OUTPUT AUDIT")
@@ -32,7 +55,8 @@ def audit_m2(cfg: ReviewConfig):
         print(f"   Mean Entropy: {entropy:.4f}")
         print(f"   Mean Max Confidence: {confidence:.4f}")
         print(f"   Uncertain Records (<0.6): {uncertain}")
-        print(f"   Label Distribution: {label_dist}")
+
+        _print_label_summary(dim, label_dist)
 
         # Per-domain breakdown
         per_domain = diag.get("per_domain", {})
@@ -44,6 +68,12 @@ def audit_m2(cfg: ReviewConfig):
                 d_conf = dd.get("mean_max_confidence", 0)
                 d_uncertain = dd.get("n_uncertain_records", 0)
                 print(f"     {d}: n={d_n}, entropy={d_entropy:.4f}, confidence={d_conf:.4f}, uncertain={d_uncertain}")
+                d_dist = dd.get("label_distribution", {})
+                if "per_category_statistics" in d_dist:
+                    for cat, st in d_dist["per_category_statistics"].items():
+                        print(f"        {cat}: mean={st.get('mean', 0):.3f} median={st.get('median', 0):.3f} "
+                              f"gt_0.5={st['above_threshold']['gt_0.5']['count']} "
+                              f"gt_0.8={st['above_threshold']['gt_0.8']['count']}")
 
     # Check weak labels files
     weak_dir = cfg.resolve_output("m2_weak_labels_dir")

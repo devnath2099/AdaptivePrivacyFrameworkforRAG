@@ -75,3 +75,60 @@ def test_no_duplicate_records_remain(m1_result):
         key = r.normalized_text.lower()
         assert key not in seen, "deduplication left a duplicate normalized_text"
         seen.add(key)
+
+
+def test_reconciliation_accounts_for_duplicates():
+    """The reconciliation must treat dedup removals separately from the split,
+    so a run with duplicates (split != cleaned) still reconciles."""
+    from m1_data_integration.pipeline import _reconcile_counts
+
+    # raw: 10 records, cleaning removes none, dedup removes 2 -> 8 survive.
+    raw_counts = {"d": 10}
+    raw_by_dataset = {"d": []}
+    cleaned_count = 10
+    removed_by_cleaning = 0
+    deduped_count = 8
+    dedup_stats = {"total_input_records": 10, "duplicates_removed": 2}
+    # split into 6 train / 1 val / 1 test = 8 (matches deduped)
+    train = [UnifiedRecord(record_id=f"t{i}", domain="d", source_dataset="s",
+                            query_text="q", context_text="", normalized_text="n") for i in range(6)]
+    val = [UnifiedRecord(record_id="v0", domain="d", source_dataset="s",
+                          query_text="q", context_text="", normalized_text="n")]
+    test = [UnifiedRecord(record_id="e0", domain="d", source_dataset="s",
+                           query_text="q", context_text="", normalized_text="n")]
+
+    rep = _reconcile_counts(
+        raw_by_dataset=raw_by_dataset, raw_counts=raw_counts,
+        cleaned_count=cleaned_count, removed_by_cleaning=removed_by_cleaning,
+        deduped_count=deduped_count, dedup_stats=dedup_stats,
+        train_records=train, val_records=val, test_records=test,
+    )
+    assert rep["checks_passed"], f"reconciliation failed: {rep['mismatches']}"
+
+
+def test_reconciliation_detects_missing_dedup_accounting():
+    """Regression guard: if the split does not equal the deduped count, the
+    reconciliation must fail (rather than silently comparing to cleaned count)."""
+    from m1_data_integration.pipeline import _reconcile_counts
+
+    raw_counts = {"d": 10}
+    raw_by_dataset = {"d": []}
+    cleaned_count = 10
+    deduped_count = 8
+    dedup_stats = {"total_input_records": 10, "duplicates_removed": 2}
+    # split totals 7 != deduped 8 -> must fail
+    train = [UnifiedRecord(record_id=f"t{i}", domain="d", source_dataset="s",
+                            query_text="q", context_text="", normalized_text="n") for i in range(5)]
+    val = [UnifiedRecord(record_id="v0", domain="d", source_dataset="s",
+                          query_text="q", context_text="", normalized_text="n")]
+    test = [UnifiedRecord(record_id="e0", domain="d", source_dataset="s",
+                           query_text="q", context_text="", normalized_text="n")]
+
+    rep = _reconcile_counts(
+        raw_by_dataset=raw_by_dataset, raw_counts=raw_counts,
+        cleaned_count=cleaned_count, removed_by_cleaning=0,
+        deduped_count=deduped_count, dedup_stats=dedup_stats,
+        train_records=train, val_records=val, test_records=test,
+    )
+    assert not rep["checks_passed"]
+    assert any(m["check"] == "split_equals_deduped" for m in rep["mismatches"])

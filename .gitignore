@@ -11,3 +11,4 @@ data/raw/
 # Ignore large generated outputs and matrices
 outputs/
 outputs01/
+output1/

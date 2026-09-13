@@ -234,13 +234,26 @@ def _reconcile_counts(
             "details": f"total_raw={total_raw}, removed_by_cleaning={removed_by_cleaning}",
         })
 
-    # 2. cleaned = train + validation + test (should equal deduped count)
+    # 2. cleaned = deduplicated + removed_by_dedup
+    #    (the split operates on the DEDUPLICATED set, not on `cleaned`)
+    if dedup_stats.get("total_input_records") is not None:
+        claimed_duplicates = dedup_stats.get("duplicates_removed", 0)
+        if deduped_count + claimed_duplicates != cleaned_count:
+            reconciliation["checks_passed"] = False
+            reconciliation["mismatches"].append({
+                "check": "cleaned_equals_deduped_plus_removed_duplicates",
+                "expected": cleaned_count,
+                "actual": deduped_count + claimed_duplicates,
+                "details": f"deduped={deduped_count}, duplicates_removed={claimed_duplicates}",
+            })
+
+    # 3. split = train + validation + test (must equal the deduplicated count)
     total_split = len(train_records) + len(val_records) + len(test_records)
-    if total_split != cleaned_count:
+    if total_split != deduped_count:
         reconciliation["checks_passed"] = False
         reconciliation["mismatches"].append({
-            "check": "split_equals_cleaned",
-            "expected": cleaned_count,
+            "check": "split_equals_deduped",
+            "expected": deduped_count,
             "actual": total_split,
             "details": f"train={len(train_records)}, validation={len(val_records)}, test={len(test_records)}",
         })
@@ -328,6 +341,17 @@ def _load_cached_evidence(cfg: ReviewConfig, partition_id: int = 0, num_partitio
                     continue
                 data = json.loads(line)
                 record = UnifiedRecord.from_dict(data)
+                # Deserialize evidence dict back to an EvidenceBundle so
+                # downstream attribute access (e.g. record.evidence.entities)
+                # works identically to the freshly-computed path.
+                if record.evidence is not None and isinstance(record.evidence, dict):
+                    from .schemas import EvidenceBundle
+                    record.evidence = EvidenceBundle(
+                        entities=record.evidence.get("entities", []),
+                        dependency_relations=record.evidence.get("dependency_relations", []),
+                        regex_matches=record.evidence.get("regex_matches", {}),
+                        embedding=record.evidence.get("embedding", None),
+                    )
                 records.append(record)
         logger.info("Loaded %d cached records with evidence (partition %d/%d)", len(records), partition_id, num_partitions)
         return records
