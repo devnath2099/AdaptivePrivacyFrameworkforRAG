@@ -100,7 +100,10 @@ def _fit_fallback(matrix: np.ndarray, num_classes: int, n_iterations: int) -> Ge
 
     for _ in range(max(1, n_iterations)):
         probs = _e_step(matrix, mu, theta, num_classes)
-        mu, theta = _m_step(matrix, probs, num_classes)
+        # M-step updates only theta (LF accuracies); mu stays at the uniform
+        # prior so that the posterior is determined by LF evidence alone,
+        # preventing collapse when the LF votes are imbalanced.
+        _, theta = _m_step(matrix, probs, num_classes)
 
     lf_accuracy = theta
     return GenerativeModelResult(

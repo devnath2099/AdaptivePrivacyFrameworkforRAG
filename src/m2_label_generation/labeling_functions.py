@@ -199,8 +199,6 @@ INTENT_LFS: List[LabelingFunction] = [
                   require_question=True),
     _make_term_lf(_IDENTITY_TERMS, "identity_related_request", "lf_intent_identity"),
     lf_intent_general_question,
-    _lf_intent_domain("medical", "medical_information_request", "lf_intent_domain_medical"),
-    _lf_intent_domain("financial", "financial_information_request", "lf_intent_domain_financial"),
 ]
 
 
