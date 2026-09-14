@@ -41,20 +41,20 @@ def run_m3(cfg, dev_mode=False, dev_train_size=100, dev_val_size=50):
     # Build datasets
     datasets = build_m3_datasets(cfg)
 
+    # Validate alignment on full datasets before Subset wrapping
+    alignment = validate_alignment(datasets["train"], datasets["val"], datasets["test"])
+    print(f"Alignment: {alignment}")
+
     if dev_mode:
         from torch.utils.data import Subset
         datasets["train"] = Subset(datasets["train"], range(dev_train_size))
         datasets["val"] = Subset(datasets["val"], range(dev_val_size))
 
-    # Validate alignment
-    alignment = validate_alignment(datasets["train"], datasets["val"], datasets["test"])
-    print(f"Alignment: {alignment}")
-
     # Get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-m3_cfg = cfg.raw.get("m3", {})
+    m3_cfg = cfg.raw.get("m3", {})
     model_name = m3_cfg.get("model_name", "microsoft/deberta-base")
     label_dims = {
         "sensitivity": 3,
@@ -69,8 +69,9 @@ m3_cfg = cfg.raw.get("m3", {})
         dropout_rate=m3_cfg.get("dropout_rate", 0.1),
     )
 
-    lr = m3_cfg.get("learning_rate", 1e-5)
-    weight_decay = m3_cfg.get("weight_decay", 0.01)
+    lr = float(m3_cfg.get("learning_rate", 1e-5))
+    weight_decay = float(m3_cfg.get("weight_decay", 0.01))
+    dropout_rate = float(m3_cfg.get("dropout_rate", 0.1))
     task_weights = m3_cfg.get("task_weights", {
         "sensitivity": 1.0, "intent": 1.0, "disclosure_scope": 1.0,
         "entity_tags": 1.0, "threat_content": 1.0,
