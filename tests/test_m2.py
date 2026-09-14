@@ -159,3 +159,52 @@ def test_single_label_dimensions_still_argmax_exclusive(m2_result):
         dist = diag["label_distribution"]
         assert "positive_counts" not in dist  # not multi-label
         assert sum(dist.values()) == diag["n_records"]
+
+
+def test_multi_label_lfs_include_absent_votes(small_cfg, m1_result):
+    """Each multi-label category must provide BOTH positive (present) and
+    negative (absent) LF votes, not just PRESENT-or-ABSTAIN. A binary LabelModel
+    that only ever sees 'present' collapses onto the positive prior, so the LFs
+    must include at least one evidence-based ABSENT (0) vote per category."""
+    from m2_label_generation.lf_engine import build_lf_matrix
+    from m2_label_generation.taxonomy import DimensionSpec
+
+    for lfs_dict in (ENTITY_TAG_LFS, THREAT_CONTENT_LFS):
+        for category, lfs in lfs_dict.items():
+            binary_spec = DimensionSpec(name=f"test_{category}", labels=["absent", "present"],
+                                         is_multi_label=False)
+            result = build_lf_matrix(m1_result.records, lfs, binary_spec)
+            # the matrix must contain at least one column that votes 0 (absent)
+            # somewhere, guaranteeing negative evidence is available.
+            has_absent = np.any(result.matrix == 0)
+            assert has_absent, f"{category} has no ABSENT (0) LF votes"
+
+
+def test_multi_label_records_actual_per_category_backend(m2_result):
+    """Multi-label dimensions must record the ACTUAL backend used per category
+    (snorkel_label_model or fallback_generative), not a hard-coded combined
+    method string. This prevents falsely claiming all categories used Snorkel."""
+    for dim in ("entity_tags", "threat_content"):
+        res = m2_result.dimension_results[dim]
+        assert res.category_backends is not None, f"{dim} missing category_backends"
+        # every label must have a truthful backend value
+        for cat in res.label_names:
+            assert cat in res.category_backends
+            assert res.category_backends[cat] in ("snorkel_label_model", "fallback_generative")
+        # combined method must reflect reality
+        distinct = set(res.category_backends.values())
+        if len(distinct) > 1:
+            assert res.generative_result.method == "mixed_multi_label"
+        else:
+            assert res.generative_result.method == next(iter(distinct))
+
+
+def test_multi_label_diagnostics_report_category_backends(m2_result):
+    """The diagnostics JSON must carry the per-category backend provenance."""
+    for dim in ("entity_tags", "threat_content"):
+        diag = m2_result.diagnostics[dim]
+        cb = diag.get("category_backends")
+        assert cb is not None and isinstance(cb, dict)
+        assert all(cb[c] in ("snorkel_label_model", "fallback_generative") for c in cb)
+        if len(set(cb.values())) > 1:
+            assert diag["generative_model_method"] == "mixed_multi_label"

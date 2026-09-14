@@ -10,7 +10,7 @@ are stacked into one (n x |labels|) matrix for that dimension.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -30,6 +30,12 @@ class DimensionWeakLabelResult:
     weak_labels: np.ndarray  # L_w, shape (n, K)
     label_names: List[str]
     _is_multi_label: bool = False
+    # For multi-label dimensions: the ACTUAL generative-model backend used for
+    # each independent category (e.g. "snorkel_label_model" or
+    # "fallback_generative"). Populated from the per-category fit_and_infer()
+    # result. This is the truthful provenance; the combined method field must
+    # not claim a single backend for all categories.
+    category_backends: Optional[Dict[str, str]] = None
 
 
 def synthesize_weak_labels_for_dimension(
@@ -71,6 +77,7 @@ def _synthesize_multi_label(
     abstention: Dict[str, float] = {}
     conflict_ratios = []
     lf_accuracies = []
+    category_backends: Dict[str, str] = {}
 
     lfs_dict = THREAT_CONTENT_LFS if spec.name == "threat_content" else ENTITY_TAG_LFS
 
@@ -80,6 +87,7 @@ def _synthesize_multi_label(
         lf_result = build_lf_matrix(records, lfs, binary_spec, balance_domains=balance_domains, seed=seed)
         gen_result = fit_and_infer(lf_result.matrix, num_classes=2, seed=seed)
         category_probs[:, k] = gen_result.probs[:, 1] if gen_result.probs.shape[0] else 0.0
+        category_backends[category] = gen_result.method  # truthful per-category backend
 
         combined_lf_names.extend([f"{category}::{name}" for name in lf_result.lf_names])
         combined_matrices.append(lf_result.matrix)
@@ -97,8 +105,14 @@ def _synthesize_multi_label(
         abstention_stats=abstention,
         conflict_stats={"conflict_ratio": float(np.mean(conflict_ratios)) if conflict_ratios else 0.0},
     )
+    distinct_backends = sorted(set(category_backends.values()))
+    combined_method = (
+        "mixed_multi_label"
+        if len(distinct_backends) > 1
+        else (distinct_backends[0] if distinct_backends else "unknown")
+    )
     combined_gen_result = GenerativeModelResult(
-        method="snorkel_label_model_per_category",
+        method=combined_method,
         class_priors=category_probs.mean(axis=0) if n else np.zeros(len(spec.labels)),
         lf_accuracy=np.concatenate(lf_accuracies) if lf_accuracies else np.zeros(0),
         probs=category_probs,
@@ -110,6 +124,7 @@ def _synthesize_multi_label(
         weak_labels=category_probs,
         label_names=spec.labels,
         _is_multi_label=True,
+        category_backends=category_backends,
     )
 
 

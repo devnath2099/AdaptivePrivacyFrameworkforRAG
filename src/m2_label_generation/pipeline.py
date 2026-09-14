@@ -71,7 +71,13 @@ def run_m2(records: List[UnifiedRecord], cfg: ReviewConfig,
 
     emit("generative_model_fitting", "running")
     gen_methods = {dim: res.generative_result.method for dim, res in dimension_results.items()}
-    snapshots["generative_model_fitting"] = {"backend_per_dimension": gen_methods}
+    gen_category_backends = {
+        dim: (res.category_backends or {}) for dim, res in dimension_results.items()
+    }
+    snapshots["generative_model_fitting"] = {
+        "backend_per_dimension": gen_methods,
+        "backend_per_category": gen_category_backends,
+    }
     emit("generative_model_fitting", "completed", snapshots["generative_model_fitting"])
 
     emit("posterior_inference", "running")

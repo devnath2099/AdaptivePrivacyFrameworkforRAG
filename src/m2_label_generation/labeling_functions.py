@@ -76,6 +76,24 @@ def _make_entity_presence_lf(entity_type: str, target_labels: tuple, name: str) 
     return _lf
 
 
+def _make_entity_absence_lf(target_labels: tuple, name: str) -> LabelingFunction:
+    """Evidence-based NEGATIVE (ABSENT) vote: the NER pipeline detected at least
+    one entity (so the parse is informative), but none of the target types
+    appear. This gives the binary LabelModel the negative signal it currently
+    entirely lacks, preventing the posterior from collapsing onto the positive
+    prior.
+    """
+    def _lf(record: UnifiedRecord, spec: DimensionSpec) -> int:
+        labels = _entity_labels(record)
+        if not labels:
+            return ABSTAIN  # no entities -> NER is uninformative -> abstain
+        if any(l in target_labels for l in labels):
+            return ABSTAIN  # target IS present -> the positive LF handles this
+        return 0  # entities detected but target type absent -> ABSENT
+    _lf.__name__ = name
+    return _lf
+
+
 def _make_regex_presence_lf(pattern_names: tuple, name: str) -> LabelingFunction:
     def _lf(record: UnifiedRecord, spec: DimensionSpec) -> int:
         return 1 if any(_regex_hit(record, p) for p in pattern_names) else ABSTAIN
@@ -83,20 +101,41 @@ def _make_regex_presence_lf(pattern_names: tuple, name: str) -> LabelingFunction
     return _lf
 
 
+def _make_contact_absence_lf(pattern_names: tuple, name: str) -> LabelingFunction:
+    """NEGATIVE (ABSENT) vote for has_contact_identifier: entities were detected
+    (NER is informative) but none of the contact-identifier regex patterns
+    (email/phone/account) match. Contact identifiers are rare but their absence
+    here is a real signal, not an arbitrary rule.
+    """
+    def _lf(record: UnifiedRecord, spec: DimensionSpec) -> int:
+        labels = _entity_labels(record)
+        if not labels:
+            return ABSTAIN
+        if any(_regex_hit(record, p) for p in pattern_names):
+            return ABSTAIN  # positive LF handles the present case
+        return 0
+    _lf.__name__ = name
+    return _lf
+
+
 ENTITY_TAG_LFS: Dict[str, List[LabelingFunction]] = {
     "has_person": [
         _make_entity_presence_lf("PERSON", ("PERSON", "PROPN_HEURISTIC"), "lf_has_person"),
+        _make_entity_absence_lf(("PERSON", "PROPN_HEURISTIC"), "lf_no_person"),
     ],
     "has_organization": [
         _make_entity_presence_lf("ORG", ("ORG",), "lf_has_organization"),
+        _make_entity_absence_lf(("ORG",), "lf_no_organization"),
     ],
     "has_location": [
         _make_entity_presence_lf("location", ("GPE", "LOC"), "lf_has_location"),
+        _make_entity_absence_lf(("GPE", "LOC"), "lf_no_location"),
     ],
     "has_contact_identifier": [
         _make_regex_presence_lf(("email",), "lf_has_email"),
         _make_regex_presence_lf(("phone",), "lf_has_phone"),
         _make_regex_presence_lf(("account_number",), "lf_has_account_number"),
+        _make_contact_absence_lf(("email", "phone", "account_number"), "lf_no_contact_identifier"),
     ],
 }
 
@@ -248,19 +287,64 @@ def lf_threat_member_dataset_ref(record, spec: DimensionSpec) -> int:
     return 1 if _has_any(text, _MEMBERSHIP_TERMS) else ABSTAIN
 
 
+def lf_threat_reid_person_without_location(record, spec: DimensionSpec) -> int:
+    """NEGATIVE (ABSENT) re-identification vote: a PERSON entity is detected but
+    NO location (GPE/LOC) co-occurs. The re-identification signal depends on
+    person+location linkage; person-without-location is genuinely weaker and
+    gives the binary model the absent evidence it currently lacks.
+    """
+    labels = _entity_labels(record)
+    has_person = "PERSON" in labels
+    has_location = any(l in ("GPE", "LOC") for l in labels)
+    if has_person and not has_location and not _regex_hit(record, "account_number"):
+        return 0
+    return ABSTAIN
+
+
+def lf_threat_attr_entity_without_attribute(record, spec: DimensionSpec) -> int:
+    """NEGATIVE (ABSENT) attribute-inference vote: entities are detected but the
+    text does NOT seek a sensitive attribute (salary/age/address/condition etc.).
+    Presence of entities without any attribute-seeking term is evidence against
+    attribute inference.
+    """
+    labels = _entity_labels(record)
+    seeks_attribute = _has_any(_text_of(record), _ATTR_SEEKING_TERMS)
+    if labels and not seeks_attribute:
+        return 0
+    return ABSTAIN
+
+
+def lf_threat_member_no_dataset_ref(record, spec: DimensionSpec) -> int:
+    """NEGATIVE (ABSENT) membership-inference vote: an information-style question
+    (starts with a wh-word) with no membership/dataset/existence terms. This is
+    a weak but defensible absent signal for records that are clearly not probing
+    dataset membership.
+    """
+    text = _text_of(record)
+    starts_wh = text.startswith(("what", "when", "where", "who", "how", "which"))
+    has_membership = _has_any(text, _MEMBERSHIP_TERMS)
+    has_existence = _has_any(text, _EXISTENCE_TERMS)
+    if starts_wh and not has_membership and not has_existence:
+        return 0
+    return ABSTAIN
+
+
 THREAT_CONTENT_LFS: Dict[str, List[LabelingFunction]] = {
     "re_identification": [
         _make_threat_presence_lf(_REID_TERMS, "lf_threat_reid_terms"),
         lf_threat_reid_person_and_location,
         lf_threat_reid_identifier,
+        lf_threat_reid_person_without_location,
     ],
     "attribute_inference": [
         lf_threat_attr_entity_and_attribute,
         lf_threat_attr_possessive,
+        lf_threat_attr_entity_without_attribute,
     ],
     "membership_inference": [
         lf_threat_member_existence,
         lf_threat_member_dataset_ref,
+        lf_threat_member_no_dataset_ref,
     ],
 }
 

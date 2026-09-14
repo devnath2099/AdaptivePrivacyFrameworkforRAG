@@ -45,12 +45,16 @@ def audit_m2(cfg: ReviewConfig):
         confidence = diag.get("mean_max_confidence", 0)
         uncertain = diag.get("n_uncertain_records", 0)
         method = diag.get("generative_model_method", "N/A")
+        category_backends = diag.get("category_backends")
         coverage = diag.get("lf_coverage", "N/A")
         label_dist = diag.get("label_distribution", {})
 
         print(f"\n2. Dimension: {dim}")
         print(f"   Records: {n}")
         print(f"   Method: {method}")
+        if category_backends:
+            for cat, cb in sorted(category_backends.items()):
+                print(f"      {cat}: {cb}")
         print(f"   LF Coverage: {coverage}")
         print(f"   Mean Entropy: {entropy:.4f}")
         print(f"   Mean Max Confidence: {confidence:.4f}")
