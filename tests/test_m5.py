@@ -186,10 +186,10 @@ def test_correct_probability_transforms(model, small_val_dataset):
     preds_list = [outputs]
     prob_lists = convert_to_probabilities(preds_list)
 
-    assert prob_lists["sensitivity"].shape == (1, 3)
-    assert prob_lists["intent"].shape == (1, 5)
-    assert prob_lists["entity_tags"].shape == (1, 4)
-    assert prob_lists["threat_content"].shape == (1, 3)
+    assert prob_lists["sensitivity"][0].shape == (1, 3)
+    assert prob_lists["intent"][0].shape == (1, 5)
+    assert prob_lists["entity_tags"][0].shape == (1, 4)
+    assert prob_lists["threat_content"][0].shape == (1, 3)
 
 
 # === Output shapes ===
@@ -208,9 +208,9 @@ def test_predictive_mean_shape(model, small_val_dataset):
     prob_lists = convert_to_probabilities([outputs])
     p_mean = compute_predictive_mean(prob_lists)
 
-    assert p_mean["sensitivity"].shape == (3,)
-    assert p_mean["intent"].shape == (5,)
-    assert p_mean["entity_tags"].shape == (4,)
+    assert p_mean["sensitivity"].shape == (1, 3)
+    assert p_mean["intent"].shape == (1, 5)
+    assert p_mean["entity_tags"].shape == (1, 4)
 
 
 def test_predictive_variance_non_negative(model, small_val_dataset):

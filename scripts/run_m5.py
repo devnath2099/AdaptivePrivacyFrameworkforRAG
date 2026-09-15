@@ -135,13 +135,20 @@ for dim in ["entity_tags", "threat_content"]:
     print(f"  {dim} macro ECE: {macro_ece:.4f}")
 
 # Correct vs incorrect uncertainty
-correct_vs_incorrect = compute_correct_vs_incorrect_uncertainty(all_preds, uncertainty_summary, all_targets)
+all_variances = {
+    dim: np.array([r[f"{dim}_variance"] for r in results])
+    for dim in all_preds
+}
+correct_vs_incorrect = compute_correct_vs_incorrect_uncertainty(
+    all_preds, all_variances, all_targets, threshold=multi_label_threshold
+)
 
 # 6. Save high uncertainty examples
 high_uncertainty = save_high_uncertainty_examples(results, top_k=10)
 
 # 7. Save outputs
 print("\n[5] Saving outputs...")
+Path("outputs/m5").mkdir(parents=True, exist_ok=True)
 
 # uncertainty_predictions.jsonl
 with open("outputs/m5/uncertainty_predictions.jsonl", "w") as f:

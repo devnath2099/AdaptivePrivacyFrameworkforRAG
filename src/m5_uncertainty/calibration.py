@@ -128,9 +128,6 @@ def compute_multilabel_ece(predictions, targets, threshold=0.5, n_bins=10):
         macro_ece += cat_ece
 
     macro_ece /= n_categories
-    all_ece["macro_ece"] = macro_ece
-    all_ece["per_category_ece"] = all_ece
-    all_bin_stats["macro"] = all_bin_stats
 
     return macro_ece, all_bin_stats, all_ece
 
@@ -139,9 +136,13 @@ def compute_correct_vs_incorrect_uncertainty(p_mean, p_variance, targets, thresh
     """Separate uncertainty metrics for correct vs incorrect predictions.
 
     For categorical tasks: compare argmax(p_mean) vs argmax(target).
-    For multi-label tasks: compare each category independently.
+    For multi-label tasks: a record is correct if all labels match.
+    Empty groups have null metrics. Variances are per-record scalars or vectors.
     """
     results = {}
+
+    def safe_mean(values):
+        return float(np.mean(values)) if np.size(values) else None
 
     # Categorical tasks
     for dim in ["sensitivity", "intent", "disclosure_scope"]:
@@ -153,14 +154,14 @@ def compute_correct_vs_incorrect_uncertainty(p_mean, p_variance, targets, thresh
 
         results[dim] = {
             "correct": {
-                "mean_entropy": float(-np.sum(preds[correct] * np.log(preds[correct] + 1e-8), axis=1).mean()),
-                "mean_variance": float(p_variance[dim][correct].mean()),
-                "mean_confidence": float(preds[correct].max(axis=1).mean()),
+                "mean_entropy": safe_mean(-np.sum(preds[correct] * np.log(preds[correct] + 1e-8), axis=1)),
+                "mean_variance": safe_mean(p_variance[dim][correct]),
+                "mean_confidence": safe_mean(preds[correct].max(axis=1)),
             },
             "incorrect": {
-                "mean_entropy": float(-np.sum(preds[~correct] * np.log(preds[~correct] + 1e-8), axis=1).mean()),
-                "mean_variance": float(p_variance[dim][~correct].mean()),
-                "mean_confidence": float(preds[~correct].max(axis=1).mean()),
+                "mean_entropy": safe_mean(-np.sum(preds[~correct] * np.log(preds[~correct] + 1e-8), axis=1)),
+                "mean_variance": safe_mean(p_variance[dim][~correct]),
+                "mean_confidence": safe_mean(preds[~correct].max(axis=1)),
             },
         }
 
@@ -182,14 +183,14 @@ def compute_correct_vs_incorrect_uncertainty(p_mean, p_variance, targets, thresh
 
         results[dim] = {
             "correct": {
-                "mean_entropy": float(mean_entropy_per_sample[correct].mean()),
-                "mean_variance": float(mean_var_per_sample[correct].mean()),
-                "mean_confidence": float(confidence[correct].mean()),
+                "mean_entropy": safe_mean(mean_entropy_per_sample[correct]),
+                "mean_variance": safe_mean(mean_var_per_sample[correct]),
+                "mean_confidence": safe_mean(confidence[correct]),
             },
             "incorrect": {
-                "mean_entropy": float(mean_entropy_per_sample[~correct].mean()),
-                "mean_variance": float(mean_var_per_sample[~correct].mean()),
-                "mean_confidence": float(confidence[~correct].mean()),
+                "mean_entropy": safe_mean(mean_entropy_per_sample[~correct]),
+                "mean_variance": safe_mean(mean_var_per_sample[~correct]),
+                "mean_confidence": safe_mean(confidence[~correct]),
             },
         }
 

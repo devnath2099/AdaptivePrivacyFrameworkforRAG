@@ -38,6 +38,8 @@ def mc_dropout_inference(model, input_ids, attention_mask, mc_passes=20):
     -------
     predictions : list of dicts
     """
+    if mc_passes < 1:
+        raise ValueError("mc_passes must be at least 1")
     set_dropout_training(model)
     predictions = []
     with torch.no_grad():
@@ -120,13 +122,18 @@ def run_m5_inference(model, dataset, mc_passes=20, batch_size=32, device=None):
     results : list of dicts, one per record
     uncertainty_summary : dict with aggregate uncertainty metrics
     """
+    if mc_passes < 1:
+        raise ValueError("mc_passes must be at least 1")
+    if len(dataset) == 0:
+        raise ValueError("M5 inference requires a non-empty dataset")
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     set_dropout_training(model)
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-    all_prob_lists = {dim: [] for dim in ["sensitivity", "intent", "disclosure_scope", "entity_tags", "threat_content"]}
+    all_means = {dim: [] for dim in ["sensitivity", "intent", "disclosure_scope", "entity_tags", "threat_content"]}
+    all_variances = {dim: [] for dim in all_means}
     all_record_ids = []
 
     with torch.no_grad():
@@ -142,15 +149,20 @@ def run_m5_inference(model, dataset, mc_passes=20, batch_size=32, device=None):
                 predictions.append(outputs)
 
             prob_lists = convert_to_probabilities(predictions)
+            batch_mean = compute_predictive_mean(prob_lists)
+            batch_variance = compute_predictive_variance(prob_lists, batch_mean)
             for dim in prob_lists:
-                all_prob_lists[dim].append(prob_lists[dim])
+                # Reduce over MC passes, then concatenate records (including
+                # a shorter final batch). Keep dataset-wide storage on CPU.
+                all_means[dim].append(batch_mean[dim].cpu())
+                all_variances[dim].append(batch_variance[dim].cpu())
+            del predictions, outputs, prob_lists, batch_mean, batch_variance
 
     p_mean = {}
     p_variance = {}
-    for dim in all_prob_lists:
-        all_probs = torch.cat(all_prob_lists[dim], dim=0)
-        p_mean[dim] = all_probs.mean(dim=0)
-        p_variance[dim] = ((all_probs - p_mean[dim]) ** 2).mean(dim=0)
+    for dim in all_means:
+        p_mean[dim] = torch.cat(all_means[dim], dim=0)
+        p_variance[dim] = torch.cat(all_variances[dim], dim=0)
 
     uncertainty_summary = compute_uncertainty_summary(p_mean, p_variance)
 
@@ -159,7 +171,7 @@ def run_m5_inference(model, dataset, mc_passes=20, batch_size=32, device=None):
         record_result = {"record_id": rid}
         for dim in p_mean:
             record_result[f"{dim}_mean"] = p_mean[dim][i].tolist()
-            record_result[f"{dim}_variance"] = p_variance[dim][i].item()
+            record_result[f"{dim}_variance"] = p_variance[dim][i].mean().item()
             if dim in ["sensitivity", "intent", "disclosure_scope"]:
                 record_result[f"{dim}_entropy"] = float(compute_categorical_entropy(p_mean[dim][i].unsqueeze(0)).item())
             else:
