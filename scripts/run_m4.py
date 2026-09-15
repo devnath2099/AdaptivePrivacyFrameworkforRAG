@@ -51,6 +51,7 @@ model = DeBERTaMultiTaskModel(
 )
 checkpoint = torch.load("outputs/m3/smoke/best_model.pt", map_location="cpu")
 model.load_state_dict(checkpoint)
+model.requires_grad_(True)
 print("M3 checkpoint loaded successfully.")
 
 # 3. Build M3 datasets (reuse same population)
