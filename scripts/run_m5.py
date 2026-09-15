@@ -44,11 +44,11 @@ cfg = load_config("configs/review1.yaml")
 m3_cfg = cfg.raw.get("m3", {})
 m5_cfg = cfg.raw.get("m5", {})
 
-mc_passes = m5_cfg.get("mc_passes", 20)
-calibration_bins = m5_cfg.get("calibration_bins", 10)
-multi_label_threshold = m5_cfg.get("multi_label_threshold", 0.5)
-batch_size = m5_cfg.get("batch_size", 32)
-max_length = m3_cfg.get("max_length", 128)
+mc_passes = int(m5_cfg.get("mc_passes", 20))
+calibration_bins = int(m5_cfg.get("calibration_bins", 10))
+multi_label_threshold = float(m5_cfg.get("multi_label_threshold", 0.5))
+batch_size = int(m5_cfg.get("batch_size", 32))
+max_length = int(m3_cfg.get("max_length", 128))
 
 print(f"Config: mc_passes={mc_passes}, bins={calibration_bins}, threshold={multi_label_threshold}")
 
