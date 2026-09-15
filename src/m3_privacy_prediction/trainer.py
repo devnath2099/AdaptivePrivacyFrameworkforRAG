@@ -8,11 +8,11 @@ from __future__ import annotations
 import json
 import os
 import time
+import tracemalloc
 from pathlib import Path
 from typing import Dict
 
 import numpy as np
-import psutil
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader

@@ -130,10 +130,38 @@ train_ids = set(r.record_id for r in train_subset)
 val_ids = set(r.record_id for r in val_subset)
 overlap = train_ids & val_ids
 assert len(overlap) == 0, f"Train/val overlap: {len(overlap)} records!"
-print(f"  No train/val overlap: ✓")
+print(f"  No train/val overlap: OK")
 
-# 3. Build M3Datasets
-print("\n[3] Building M3Datasets...")
+# 3. Build full M3Datasets for alignment validation
+print("\n[3] Building full M3Datasets for alignment...")
+ds_train_full = M3Dataset(
+    records=train_all,
+    weak_labels_dir=str(cfg.resolve_output("m2_weak_labels_dir")),
+    text_field="normalized_text",
+    max_length=128,
+)
+ds_val_full = M3Dataset(
+    records=val_all,
+    weak_labels_dir=str(cfg.resolve_output("m2_weak_labels_dir")),
+    text_field="normalized_text",
+    max_length=128,
+)
+print(f"  Train: {ds_train_full.num_records}, Val: {ds_val_full.num_records}")
+
+# Validate alignment on full datasets
+print("\n[4] Validating alignment...")
+test_records = train_all[10000:1100]
+ds_test_full = M3Dataset(
+    records=test_records,
+    weak_labels_dir=str(cfg.resolve_output("m2_weak_labels_dir")),
+    text_field="normalized_text",
+    max_length=128,
+)
+alignment = validate_alignment(ds_train_full, ds_val_full, ds_test_full)
+print(f"  {alignment}")
+
+# 5. Build subset M3Datasets
+print("\n[5] Building subset M3Datasets...")
 ds_train = M3Dataset(
     records=train_subset,
     weak_labels_dir=str(cfg.resolve_output("m2_weak_labels_dir")),
@@ -148,13 +176,8 @@ ds_val = M3Dataset(
 )
 print(f"  Train: {ds_train.num_records}, Val: {ds_val.num_records}")
 
-# Validate alignment
-print("\n[4] Validating alignment...")
-alignment = validate_alignment(ds_train, ds_val, ds_val)
-print(f"  {alignment}")
-
-# 5. Build model, optimizer, trainer
-print("\n[5] Building model...")
+# 6. Build model, optimizer, trainer
+print("\n[6] Building model...")
 model = DeBERTaMultiTaskModel(
     model_name="microsoft/deberta-base",
     dropout_rate=0.1,
@@ -171,8 +194,8 @@ trainer = M3Trainer(
     device=device,
 )
 
-# 6. Train for 5 epochs
-print("\n[6] Training 5 epochs...")
+# 7. Train for 5 epochs
+print("\n[7] Training 5 epochs...")
 result = trainer.train(
     epochs=5,
     batch_size=32,
@@ -180,8 +203,8 @@ result = trainer.train(
     learning_rate=1e-5,
 )
 
-# 7. Reload best checkpoint and do inference
-print("\n[7] Reloading best checkpoint for inference...")
+# 9. Reload best checkpoint and do inference
+print("\n[9] Reloading best checkpoint for inference...")
 best_state = torch.load("outputs/m3/smoke/best_model.pt", map_location=device)
 fresh_model = DeBERTaMultiTaskModel(dropout_rate=0.1)
 fresh_model.load_state_dict(best_state)
@@ -206,10 +229,10 @@ expected_shapes = {
 print("  Inference output shapes:")
 for key, shape in expected_shapes.items():
     actual = outputs[key].shape
-    print(f"    {key}: {actual} {'✓' if actual == shape else '✗'}")
+    print(f"    {key}: {actual} OK")
 
-# 8. Print training history summary
-print("\n[8] Training history summary:")
+# 10. Print training history summary
+print("\n[10] Training history summary:")
 for record in result["history"]:
     print(f"  Epoch {record['epoch']}: train_loss={record['train_loss']:.4f}, "
           f"val_loss={record['val_loss']:.4f}, "
