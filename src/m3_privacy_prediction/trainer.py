@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Dict
 
+import numpy as np
+import psutil
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -117,66 +120,122 @@ class M3Trainer:
 
     def train(
         self,
-        epochs=1,
+        epochs=5,
         batch_size=32,
-        save_dir="outputs/m3",
-        save_best_every_epoch=False,
+        save_dir="outputs/m3/smoke",
+        learning_rate=1e-5,
     ):
-        """Train the model for the specified number of epochs.
+        """Train for specified epochs with full reporting.
 
-        Saves the best checkpoint by validation loss.
+        Saves best checkpoint to save_dir based on validation loss.
+        Reports per-epoch metrics, duration, and GPU memory.
         """
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
 
         best_val_loss = float("inf")
         best_state = None
+        best_metrics = None
+        tracemalloc.start()
 
         for epoch in range(epochs):
+            epoch_start = time.time()
+
             train_stats = self.train_epoch(batch_size=batch_size)
             val_result = self.validate()
 
+            epoch_duration = time.time() - epoch_start
+
+            # Peak GPU memory
+            if torch.cuda.is_available():
+                peak_gpu_mb = torch.cuda.max_memory_allocated() / 1024**2
+                torch.cuda.reset_peak_memory_stats()
+            else:
+                peak_gpu_mb = 0.0
+
+            # CPU memory
+            current, peak = tracemalloc.get_traced_memory()
+            tracemalloc.reset_peak()
+            peak_cpu_mb = peak / 1024**2
+
+            # Get learning rate from optimizer
+            lr = self.optimizer.param_groups[0]["lr"]
+
             epoch_record = {
-                "epoch": epoch,
-                "train_loss": train_stats["total_loss"],
-                "val_loss": val_result["loss"],
-                "train_task_losses": train_stats,
-                "val_metrics": val_result["metrics"],
+                "epoch": epoch + 1,
+                "train_loss": round(train_stats["total_loss"], 4),
+                "train_task_losses": {k: round(v, 4) for k, v in train_stats.items()},
+                "val_loss": round(val_result["loss"], 4),
+                "val_metrics": self._serialize_metrics(val_result["metrics"]),
+                "learning_rate": lr,
+                "epoch_duration_seconds": round(epoch_duration, 2),
+                "peak_gpu_memory_mb": round(peak_gpu_mb, 2),
+                "peak_cpu_memory_mb": round(peak_cpu_mb, 2),
             }
             self.history.append(epoch_record)
+
+            print(f"\n{'='*60}")
+            print(f"Epoch {epoch + 1}/{epochs}")
+            print(f"  Train loss: {epoch_record['train_loss']:.4f}")
+            for k, v in train_stats.items():
+                if k != "total_loss":
+                    print(f"  Train {k}: {v:.4f}")
+            print(f"  Val loss: {epoch_record['val_loss']:.4f}")
+            print(f"  Duration: {epoch_duration:.1f}s")
+            print(f"  Peak GPU memory: {peak_gpu_mb:.1f} MB")
+            print(f"{'='*60}")
 
             if val_result["loss"] < best_val_loss:
                 best_val_loss = val_result["loss"]
                 best_state = {k: v.clone() for k, v in self.model.state_dict().items()}
                 best_metrics = val_result["metrics"]
-
-        # Save best model
-        if best_state is not None:
-            self.model.load_state_dict(best_state)
-            torch.save(best_state, save_dir / "best_model.pt")
+                torch.save(best_state, save_dir / "best_model.pt")
+                print(f"  → New best model saved (val_loss={best_val_loss:.4f})")
 
         # Save training history
         with open(save_dir / "training_history.json", "w") as f:
             json.dump(self.history, f, indent=2, default=str)
 
-        # Save validation metrics
-        with open(save_dir / "validation_metrics.json", "w") as f:
-            json.dump(best_metrics, f, indent=2, default=str)
+        # Save best validation metrics
+        if best_metrics is not None:
+            with open(save_dir / "validation_metrics.json", "w") as f:
+                json.dump(best_metrics, f, indent=2, default=str)
 
         # Save config metadata
         config = {
-            "best_val_loss": best_val_loss,
+            "best_val_loss": round(best_val_loss, 4),
             "epochs": epochs,
             "batch_size": batch_size,
+            "learning_rate": learning_rate,
+            "train_size": len(self.train_dataset),
+            "val_size": len(self.val_dataset),
+            "label_dims": {"sensitivity": 3, "intent": 5, "disclosure_scope": 2,
+                           "entity_tags": 4, "threat_content": 3},
         }
         with open(save_dir / "m3_config.json", "w") as f:
             json.dump(config, f, indent=2, default=str)
+
+        # Save best model state dict
+        if best_state is not None:
+            torch.save(best_state, save_dir / "best_model.pt")
+
+        print(f"\nBest val loss: {best_val_loss:.4f}")
+        tracemalloc.stop()
 
         return {
             "history": self.history,
             "best_val_loss": best_val_loss,
             "best_metrics": best_metrics,
         }
+
+    @staticmethod
+    def _serialize_metrics(metrics):
+        result = {}
+        for dim, m in metrics.items():
+            if isinstance(m, dict):
+                result[dim] = {k: (round(v, 4) if isinstance(v, (int, float)) else v)
+                              for k, v in m.items()}
+        return result
 
     def save_checkpoint(self, path):
         """Save model state dict to path."""
