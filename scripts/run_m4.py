@@ -39,9 +39,11 @@ epochs = int(m4_cfg.get("epochs", 3))
 batch_size = int(m4_cfg.get("batch_size", 32))
 learning_rate = float(m4_cfg.get("learning_rate", 1e-5))
 max_length = int(m3_cfg.get("max_length", 128))
+adv_val_batch_size = int(m4_cfg.get("adv_val_batch_size", 16))
 
 print(f"Config: epsilon={epsilon}, lambda_adv={lambda_adv}, epochs={epochs}")
 print(f"Batch size: {batch_size}, Learning rate: {learning_rate}")
+print(f"Adversarial val batch size: {adv_val_batch_size}")
 
 # 2. Load M3 checkpoint
 print("\n[1] Loading M3 checkpoint...")
@@ -103,6 +105,7 @@ result = trainer.train(
     learning_rate=learning_rate,
     epsilon=epsilon,
     lambda_adv=lambda_adv,
+    adv_val_batch_size=adv_val_batch_size,
 )
 
 # 6. Load best M4 checkpoint and evaluate
@@ -111,7 +114,8 @@ best_state = torch.load("outputs/m4/best_model.pt", map_location=device)
 model.load_state_dict(best_state)
 
 val_result = trainer.validate(adversarial=False)
-adv_val_result = trainer.validate(adversarial=True, epsilon=epsilon)
+adv_val_result = trainer.validate(adversarial=True, epsilon=epsilon,
+                                 adv_val_batch_size=adv_val_batch_size)
 
 print("\nM4 Clean Validation Metrics:")
 for dim, m in val_result["metrics"].items():
@@ -134,7 +138,8 @@ m3_trainer = M4Trainer(
     optimizer=optimizer, device=device
 )
 m3_val = m3_trainer.validate(adversarial=False)
-m3_adv = m3_trainer.validate(adversarial=True, epsilon=epsilon)
+m3_adv = m3_trainer.validate(adversarial=True, epsilon=epsilon,
+                             adv_val_batch_size=adv_val_batch_size)
 
 print("\nM3 vs M4 Robustness Comparison:")
 print(f"  M3 Clean: val_loss={m3_val['loss']:.4f}")

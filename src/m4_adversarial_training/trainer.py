@@ -6,6 +6,7 @@ saves best robust checkpoint.
 """
 from __future__ import annotations
 
+import gc
 import json
 import time
 import tracemalloc
@@ -19,7 +20,11 @@ from tqdm import tqdm
 
 from m3_privacy_prediction.losses import compute_total_loss
 from m3_privacy_prediction.metrics import compute_all_metrics
-from m4_adversarial_training.fgsm import adversarial_forward
+from m4_adversarial_training.fgsm import (
+    adversarial_forward,
+    generate_fgsm_delta,
+    _forward_from_embeddings,
+)
 
 
 class M4Trainer:
@@ -80,20 +85,22 @@ class M4Trainer:
                for k in epoch_stats[0]}
         return avg
 
-    def validate(self, adversarial=False, epsilon=1e-3):
+    def validate(self, adversarial=False, epsilon=1e-3, adv_val_batch_size=16):
         """Validate the model on clean or adversarial inputs.
 
         Parameters
         ----------
         adversarial : bool — if True, apply FGSM to validation inputs
         epsilon : float — FGSM epsilon if adversarial
+        adv_val_batch_size : int — batch size for adversarial validation
 
         Returns
         -------
         dict with loss, metrics, predictions
         """
         self.model.eval()
-        dataloader = DataLoader(self.val_dataset, batch_size=32, shuffle=False)
+        batch_size = adv_val_batch_size if adversarial else 32
+        dataloader = DataLoader(self.val_dataset, batch_size=batch_size, shuffle=False)
 
         all_preds = {}
         all_targets = {}
@@ -106,26 +113,47 @@ class M4Trainer:
             targets = {k: v.to(self.device) for k, v in batch["soft_targets"].items()}
 
             if adversarial:
-                total_loss_batch, _, _, _, _, _ = adversarial_forward(
-                    self.model, input_ids, attention_mask, targets,
-                    compute_total_loss, epsilon=epsilon
-                )
-                outputs = self.model(input_ids, attention_mask)
+                with torch.no_grad():
+                    embeddings_raw = self.model.encoder.embeddings(input_ids=input_ids)
+                embeddings = embeddings_raw.detach().requires_grad_(True)
+                del embeddings_raw
+
+                with torch.enable_grad():
+                    _, clean_loss, _ = _forward_from_embeddings(
+                        self.model, embeddings, attention_mask, targets, compute_total_loss
+                    )
+                    grad = torch.autograd.grad(clean_loss, embeddings, create_graph=False)[0]
+                del clean_loss
+
+                delta = generate_fgsm_delta(grad, attention_mask, epsilon)
+                del grad
+
+                with torch.no_grad():
+                    embeddings_adv = embeddings.detach() + delta.detach()
+                    del embeddings, delta
+                    outputs_adv, total_loss_batch, _ = _forward_from_embeddings(
+                        self.model, embeddings_adv, attention_mask, targets, compute_total_loss
+                    )
+                    del embeddings_adv
+
+                outputs = outputs_adv
             else:
                 with torch.no_grad():
                     outputs = self.model(input_ids, attention_mask)
                     total_loss_batch, _ = compute_total_loss(outputs, targets)
 
-                total_loss += total_loss_batch.item()
-                num_batches += 1
+            total_loss += total_loss_batch.item()
+            num_batches += 1
 
-                for dim_name in targets:
-                    logits_key = f"{dim_name}_logits"
-                    if dim_name not in all_preds:
-                        all_preds[dim_name] = []
-                        all_targets[dim_name] = []
-                    all_preds[dim_name].append(outputs[logits_key].cpu().numpy())
-                    all_targets[dim_name].append(targets[dim_name].cpu().numpy())
+            for dim_name in targets:
+                logits_key = f"{dim_name}_logits"
+                if dim_name not in all_preds:
+                    all_preds[dim_name] = []
+                    all_targets[dim_name] = []
+                all_preds[dim_name].append(outputs[logits_key].cpu().numpy())
+                all_targets[dim_name].append(targets[dim_name].cpu().numpy())
+
+            del input_ids, attention_mask, targets, outputs, total_loss_batch
 
         for dim_name in all_preds:
             all_preds[dim_name] = np.concatenate(all_preds[dim_name], axis=0)
@@ -136,7 +164,8 @@ class M4Trainer:
         return {"loss": avg_loss, "metrics": metrics, "predictions": all_preds}
 
     def train(self, epochs=3, batch_size=32, save_dir="outputs/m4",
-              learning_rate=1e-5, epsilon=1e-3, lambda_adv=1.0):
+              learning_rate=1e-5, epsilon=1e-3, lambda_adv=1.0,
+              adv_val_batch_size=16):
         """Train M4 with FGSM adversarial fine-tuning.
 
         Parameters
@@ -147,6 +176,7 @@ class M4Trainer:
         learning_rate : float
         epsilon : float — FGSM perturbation magnitude
         lambda_adv : float — weight for adversarial loss
+        adv_val_batch_size : int — batch size for adversarial validation
         """
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -161,7 +191,17 @@ class M4Trainer:
 
             train_stats = self.train_epoch(batch_size=batch_size, epsilon=epsilon, lambda_adv=lambda_adv)
             val_result = self.validate(adversarial=False)
-            adv_val_result = self.validate(adversarial=True, epsilon=epsilon)
+
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            adv_val_result = self.validate(adversarial=True, epsilon=epsilon,
+                                           adv_val_batch_size=adv_val_batch_size)
+
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             epoch_duration = time.time() - epoch_start
 
@@ -222,9 +262,10 @@ class M4Trainer:
 
         # Save config metadata
         config = {
-            "best_val_loss": round(best_val_loss, 4),
+            "best_val_loss": round(float(best_val_loss), 4),
             "epochs": epochs,
             "batch_size": batch_size,
+            "adv_val_batch_size": adv_val_batch_size,
             "learning_rate": learning_rate,
             "epsilon": epsilon,
             "lambda_adv": lambda_adv,

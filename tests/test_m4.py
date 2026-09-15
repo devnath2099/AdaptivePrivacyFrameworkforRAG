@@ -271,3 +271,71 @@ def test_m4_trainer_smoke(model, small_dataset):
     assert "adv_loss" in stats
     assert stats["total_loss"] > 0
     assert stats["max_delta"] >= 0
+
+
+def test_adversarial_validation_no_param_grads(model, small_dataset):
+    """Adversarial validation should not accumulate parameter gradients."""
+    from torch.utils.data import Subset
+    from torch.optim import AdamW
+    from m4_adversarial_training.trainer import M4Trainer
+
+    indices = list(range(min(16, len(small_dataset))))
+    subset = Subset(small_dataset, indices)
+
+    optimizer = AdamW(model.parameters(), lr=1e-5)
+    trainer = M4Trainer(
+        model=model, train_dataset=subset, val_dataset=subset,
+        optimizer=optimizer, device=torch.device("cpu")
+    )
+
+    model.zero_grad()
+    result = trainer.validate(adversarial=True, epsilon=1e-3, adv_val_batch_size=8)
+
+    assert result["loss"] > 0
+    for p in model.parameters():
+        if p.grad is not None:
+            assert p.grad.abs().sum() == 0, \
+                "Adversarial validation should not populate parameter gradients"
+
+
+def test_adversarial_validation_predictions_cpu(model, small_dataset):
+    """Adversarial validation predictions should be detached CPU numpy arrays."""
+    from torch.utils.data import Subset
+    from torch.optim import AdamW
+    from m4_adversarial_training.trainer import M4Trainer
+
+    indices = list(range(min(16, len(small_dataset))))
+    subset = Subset(small_dataset, indices)
+
+    optimizer = AdamW(model.parameters(), lr=1e-5)
+    trainer = M4Trainer(
+        model=model, train_dataset=subset, val_dataset=subset,
+        optimizer=optimizer, device=torch.device("cpu")
+    )
+
+    result = trainer.validate(adversarial=True, epsilon=1e-3, adv_val_batch_size=8)
+
+    for dim_name, preds in result["predictions"].items():
+        assert isinstance(preds, np.ndarray), \
+            f"Predictions for {dim_name} should be numpy arrays"
+        assert preds.dtype == np.float32 or preds.dtype == np.float64
+
+
+def test_adv_val_batch_size_parameter(model, small_dataset):
+    """validate() should accept adv_val_batch_size parameter."""
+    from torch.utils.data import Subset
+    from torch.optim import AdamW
+    from m4_adversarial_training.trainer import M4Trainer
+
+    indices = list(range(min(16, len(small_dataset))))
+    subset = Subset(small_dataset, indices)
+
+    optimizer = AdamW(model.parameters(), lr=1e-5)
+    trainer = M4Trainer(
+        model=model, train_dataset=subset, val_dataset=subset,
+        optimizer=optimizer, device=torch.device("cpu")
+    )
+
+    result = trainer.validate(adversarial=True, epsilon=1e-3, adv_val_batch_size=4)
+    assert "loss" in result
+    assert "metrics" in result

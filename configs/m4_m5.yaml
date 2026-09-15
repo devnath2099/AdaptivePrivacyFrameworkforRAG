@@ -10,6 +10,7 @@ m4:
   dropout_rate: 0.1
   epsilon: 1e-3
   lambda_adv: 1.0
+  adv_val_batch_size: 16
   task_weights:
     sensitivity: 1.0
     intent: 1.0
