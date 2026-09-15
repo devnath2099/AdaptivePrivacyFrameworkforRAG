@@ -179,12 +179,12 @@ class M4Trainer:
 
             epoch_record = {
                 "epoch": epoch + 1,
-                "train_loss": round(train_stats["total_loss"], 4),
-                "clean_loss": round(train_stats["clean_loss"], 4),
-                "adv_loss": round(train_stats["adv_loss"], 4),
-                "max_delta": round(train_stats["max_delta"], 6),
-                "val_loss": round(val_result["loss"], 4),
-                "adv_val_loss": round(adv_val_result["loss"], 4),
+                "train_loss": round(float(train_stats["total_loss"]), 4),
+                "clean_loss": round(float(train_stats["clean_loss"]), 4),
+                "adv_loss": round(float(train_stats["adv_loss"]), 4),
+                "max_delta": round(float(train_stats["max_delta"]), 6),
+                "val_loss": round(float(val_result["loss"]), 4),
+                "adv_val_loss": round(float(adv_val_result["loss"]), 4),
                 "learning_rate": lr,
                 "epoch_duration_seconds": round(epoch_duration, 2),
                 "peak_gpu_memory_mb": round(peak_gpu_mb, 2),
