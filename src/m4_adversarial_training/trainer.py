@@ -100,20 +100,19 @@ class M4Trainer:
         total_loss = 0.0
         num_batches = 0
 
-        with torch.no_grad():
-            for batch in tqdm(dataloader, desc="Validation (adversarial)" if adversarial else "Validation"):
-                input_ids = batch["input_ids"].to(self.device)
-                attention_mask = batch["attention_mask"].to(self.device)
-                targets = {k: v.to(self.device) for k, v in batch["soft_targets"].items()}
+        for batch in tqdm(dataloader, desc="Validation (adversarial)" if adversarial else "Validation"):
+            input_ids = batch["input_ids"].to(self.device)
+            attention_mask = batch["attention_mask"].to(self.device)
+            targets = {k: v.to(self.device) for k, v in batch["soft_targets"].items()}
 
-                if adversarial:
-                    # Apply FGSM to validation inputs
-                    total_loss_batch, _, _, _, _, _ = adversarial_forward(
-                        self.model, input_ids, attention_mask, targets,
-                        compute_total_loss, epsilon=epsilon
-                    )
-                    outputs = self.model(input_ids, attention_mask)
-                else:
+            if adversarial:
+                total_loss_batch, _, _, _, _, _ = adversarial_forward(
+                    self.model, input_ids, attention_mask, targets,
+                    compute_total_loss, epsilon=epsilon
+                )
+                outputs = self.model(input_ids, attention_mask)
+            else:
+                with torch.no_grad():
                     outputs = self.model(input_ids, attention_mask)
                     total_loss_batch, _ = compute_total_loss(outputs, targets)
 
