@@ -9,3 +9,4 @@ snorkel>=0.9.9
 streamlit>=1.33
 pytest>=7.4
 tqdm>=4.65
+torch>=2.0
