@@ -1,6 +1,6 @@
 from pathlib import Path
 from transformers import AutoModelForTokenClassification, AutoTokenizer
-from review2.common import load_stage, read_json, read_jsonl, write_json, write_jsonl, digest, finish_stage, seed_all
+from review2.common import load_stage, read_json, read_jsonl, write_json, write_jsonl, digest, finish_stage, seed_all, evaluation_cohort
 from review2.m2.alignment import encode
 from review2.m2.training import train
 from .attacks import attack_set
@@ -17,6 +17,8 @@ def run(config, run_dir):
     labels = read_json(run_dir / 'm1/labels.json')
     length = selected['max_length']
     rows = {s: read_jsonl(run_dir / f'm1/{s}.jsonl') for s in ('train', 'validation')}
+    rows['validation'] = evaluation_cohort(rows['validation'], config.get('evaluation', {}).get('m3_validation'),
+                                         config['seed'], run_dir / 'm3/validation_cohort.json')
     attacked = attack_set(rows['validation'], config['m3']['attacks'])
     if not attacked:
         raise ValueError('No applicable validation attacks')

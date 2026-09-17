@@ -80,7 +80,7 @@ Final test results were not used for tuning. Near-zero scores on these small run
 
 ## pretrained_cpu
 
-Run has no completion marker. Inspect run.log and failure.json before claiming completion.
+Completed stages: m1, m2, m3, m4, m5, m6. Final test evaluated: True.
 
 Run kind: `pretrained_cpu_feasibility`. Dataset cap: 60 rows per official split.
 
@@ -100,6 +100,52 @@ Release/canonical inventory: 82 entity types.
 | deberta_weighted | 0.000000 | 0.000000 | 539.28 | 161.13 |
 | distilbert_ce | 0.000000 | 0.000000 | 128.91 | 65.83 |
 | distilbert_weighted | 0.000000 | 0.000000 | 177.52 | 60.67 |
+
+| M3 variant | Clean validation F1 | Mean attack F1 (applicable families) |
+|---|---:|---:|
+| standard_continuation | 0.000000 | 0.000000 |
+| fgsm_e0.0001_l0.5 | 0.000000 | 0.000000 |
+
+Matched continuation control separates the extra training epoch from FGSM. Detailed paired attack metrics, eligible attack-success denominators and overhead are in `m3/`.
+
+M4 selected `temperature_mc5` on validation. Fitted T=0.962294; calibration NLL 0.676033 → 0.674089.
+
+| Reliability method | ECE | NLL | Brier | AURC | Seconds |
+|---|---:|---:|---:|---:|---:|
+| raw | 0.037403 | 1.177039 | 0.335475 | 0.064548 | 28.41 |
+| temperature | 0.047365 | 1.173453 | 0.337025 | 0.064542 | 28.41 |
+| temperature_mc5 | 0.040735 | 1.170048 | 0.336156 | 0.064072 | 211.69 |
+| temperature_mc10 | 0.041869 | 1.169407 | 0.336098 | 0.064241 | 419.01 |
+
+These are token metrics including O; PII-only metrics are also saved. Plot: `m4/reliability.svg`.
+
+| Risk method | Mean validation risk score | Duplicate evidence max change |
+|---|---:|---:|
+| max | 0.039145 | 0 |
+| weighted | 0.032997 | 2.77556e-17 |
+| ds | 0.277663 | 1.11022e-16 |
+
+Risk scores use a disclosed category-ordering assumption. No risk accuracy/superiority claim is possible without independent outcomes.
+
+| Controlled policy mode | Constraint violations | Block fallbacks |
+|---|---:|---:|
+| no_privacy | 3 | 0 |
+| weak | 2 | 0 |
+| medium | 1 | 0 |
+| strong | 0 | 0 |
+| adaptive | 0 | 0 |
+
+Detector-derived validation decisions: 50; block fallbacks: 0.
+Controlled profile numbers are fixtures. Lower simulated cost/violations does not establish real privacy or RAG utility gains.
+
+| Frozen final-test M2 variant | Strict F1 | Recall |
+|---|---:|---:|
+| deberta_ce | 0.000000 | 0.000000 |
+| deberta_weighted | 0.000000 | 0.000000 |
+| distilbert_ce | 0.000000 | 0.000000 |
+| distilbert_weighted | 0.000000 | 0.000000 |
+
+Final test results were not used for tuning. Near-zero scores on these small runs are failures to establish useful detection, not successful thesis results.
 
 ## Failures and limits
 

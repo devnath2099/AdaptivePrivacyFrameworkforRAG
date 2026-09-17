@@ -3,6 +3,8 @@
 Separate implementation of the supplied Technical Handoff. Module identifiers are
 functional, pending manual thesis-title review. No M7, M8 or M9 implementation.
 
+For a ready-to-run GPU notebook and upload archive, see [Kaggle instructions](docs/KAGGLE.md).
+
 Run commands from the repository root using the existing Python environment:
 
 ```powershell

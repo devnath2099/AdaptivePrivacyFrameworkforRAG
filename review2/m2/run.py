@@ -1,6 +1,6 @@
 from pathlib import Path
 import torch
-from review2.common import read_json, read_jsonl, write_json, write_jsonl, load_stage, finish_stage, digest, seed_all
+from review2.common import read_json, read_jsonl, write_json, write_jsonl, load_stage, finish_stage, digest, seed_all, evaluation_cohort
 from .model import build, get_tokenizer
 from .alignment import encode
 from .training import train
@@ -17,6 +17,8 @@ def run(config, run_dir):
     rows = {s: read_jsonl(run_dir / f'm1/{s}.jsonl') for s in ('train', 'validation')}
     counts = read_json(run_dir / 'm1/statistics.json')['train']['entities']
     directory = run_dir / 'm2'
+    rows['validation'] = evaluation_cohort(rows['validation'], config.get('evaluation', {}).get('m2_validation'),
+                                         config['seed'], directory / 'validation_cohort.json')
     results = []
     for spec in config['m2']['models']:
         tokenizer = get_tokenizer(spec)

@@ -1,7 +1,7 @@
 from pathlib import Path
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer
-from review2.common import read_json, read_jsonl, write_json, write_jsonl, load_stage, digest, finish_stage, file_hash, seed_all
+from review2.common import read_json, read_jsonl, write_json, write_jsonl, load_stage, digest, finish_stage, file_hash, seed_all, evaluation_cohort
 from review2.m2.alignment import encode, decode
 from review2.m2.inference import predict
 from .calibration import fit_temperature
@@ -38,6 +38,9 @@ def run(config, run_dir):
     tokenizer = AutoTokenizer.from_pretrained(path)
     labels = read_json(run_dir / 'm1/labels.json')
     rows = {s: read_jsonl(run_dir / f'm1/{s}.jsonl') for s in ('calibration', 'validation')}
+    for split in rows:
+        rows[split] = evaluation_cohort(rows[split], config.get('evaluation', {}).get('m4_' + split),
+                                       config['seed'], run_dir / 'm4' / (split + '_cohort.json'))
     data = {s: encode(r, tokenizer, labels, selected['max_length']) for s, r in rows.items()}
     directory = run_dir / 'm4'
     directory.mkdir(parents=True, exist_ok=True)

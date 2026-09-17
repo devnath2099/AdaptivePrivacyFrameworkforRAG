@@ -2,11 +2,45 @@
 import hashlib
 import json
 import random
+from collections import defaultdict, Counter
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SPLITS = ('train', 'validation', 'calibration', 'test')
+
+
+def record_subset(rows, limit, seed):
+    """Fixed hash-ordered whole-group sample, selected without examining annotations."""
+    if limit is None:
+        return rows
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError('Record limit must be a positive integer')
+    if len(rows) <= limit:
+        return rows
+    groups = defaultdict(list)
+    for row in rows:
+        key = row.get('component_id', row['record_id'])
+        groups[key].append(row)
+    selected = []
+    for key in sorted(groups, key=lambda k: digest([seed, k])):
+        group = sorted(groups[key], key=lambda row: row['record_id'])
+        if len(selected) + len(group) <= limit:
+            selected.extend(group)
+        if len(selected) == limit:
+            break
+    if not selected:
+        raise ValueError('No complete group fits the requested record limit')
+    return selected
+
+
+def evaluation_cohort(rows, limit, seed, output):
+    selected = record_subset(rows, limit, seed)
+    write_json(output, {'available': len(rows), 'requested_limit': limit, 'selected': len(selected),
+                       'seed': seed, 'selection': 'annotation-blind hash ordering of intact groups',
+                       'sources': dict(Counter(r['source_id'] for r in selected)),
+                       'record_ids': [r['record_id'] for r in selected]})
+    return selected
 
 
 def digest(value):

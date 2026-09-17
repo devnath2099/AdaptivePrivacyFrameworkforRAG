@@ -1,5 +1,5 @@
 from pathlib import Path
-from review2.common import SPLITS, write_json, write_jsonl, finish_stage, digest
+from review2.common import SPLITS, write_json, write_jsonl, finish_stage, digest, record_subset
 from .loaders import acquire
 from .normalization import canonical
 from .validation import validate_record, check_isolation
@@ -34,6 +34,23 @@ def run(config, run_dir):
     if rejected and config['m1'].get('invalid_annotation', 'error') == 'error':
         raise ValueError('Invalid source annotations; inspect annotation_integrity.json')
     unique, discarded = deduplicate(rows)
+    targets = config['m1'].get('official_split_targets')
+    if targets:
+        available, selected = {}, []
+        if {r['split'] for r in unique} != set(targets):
+            raise ValueError('Requested official split targets do not match available official splits')
+        for split, count in targets.items():
+            pool = [r for r in unique if r['split'] == split]
+            available[split] = len(pool)
+            chosen = record_subset(pool, count, config['seed'])
+            if len(chosen) != count:
+                write_json(directory / 'target_deficit.json', {'split': split, 'required': count,
+                           'available': len(pool), 'group_safe_selected': len(chosen)})
+                raise ValueError(f'{split}: cannot meet valid-record target; increase its acquisition pool')
+            selected.extend(chosen)
+        write_json(directory / 'sampling_manifest.json', {'targets': targets, 'valid_available': available,
+                   'selected': len(selected), 'rule': 'annotation-blind whole-group hash sample after integrity checks'})
+        unique = selected
     rows = split_records(unique, config['seed'], config['m1']['ratios'], config['m1']['calibration_fraction'])
     check_isolation(rows)
     for split in SPLITS:

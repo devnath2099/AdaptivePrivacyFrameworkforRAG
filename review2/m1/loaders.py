@@ -1,5 +1,6 @@
 """Pinned Hugging Face JSONL or checksum-verified local sources; no synthetic fallback."""
 import json
+import random
 import urllib.request
 from pathlib import Path
 from review2.common import file_hash, write_json, write_jsonl, read_json, read_jsonl, digest
@@ -38,8 +39,19 @@ def acquire(spec, cache):
         return read_jsonl(path), info
     base = f"https://huggingface.co/datasets/{spec['dataset_id']}/resolve/{revision}/"
     rows = []
+    scanned = {}
+    sampling = spec.get('sampling', 'prefix')
+    if sampling not in ('prefix', 'reservoir'):
+        raise ValueError('Unknown acquisition sampling method')
+    if 'limits_per_split' in spec and set(spec['limits_per_split']) != set(spec['files']):
+        raise ValueError('Per-split acquisition limits must name every official split')
     for split, filename in spec['files'].items():
         count = 0
+        pool = []
+        limit = spec.get('limits_per_split', {}).get(split, spec.get('limit_per_split'))
+        if limit is not None and (not isinstance(limit, int) or limit < 1):
+            raise ValueError('Acquisition limits must be positive integers or null')
+        rng = random.Random(f"{spec.get('seed', 42)}:{split}")
         with urllib.request.urlopen(base + filename, timeout=120) as handle:
             for line in handle:
                 if not line.strip():
@@ -47,15 +59,23 @@ def acquire(spec, cache):
                 row = json.loads(line)
                 row['_official_split'] = split
                 row['_source_record_id'] = f'{split}:{count}'
-                rows.append(row)
                 count += 1
-                if spec.get('limit_per_split') and count >= spec['limit_per_split']:
+                if limit is None or len(pool) < limit:
+                    pool.append(row)
+                elif sampling == 'reservoir':
+                    position = rng.randrange(count)
+                    if position < limit:
+                        pool[position] = row
+                if sampling == 'prefix' and limit and count >= limit:
                     break
+        scanned[split] = count
+        rows.extend(sorted(pool, key=lambda row: int(row['_source_record_id'].rsplit(':', 1)[1])))
     if not rows:
         raise ValueError('No source records acquired')
     write_jsonl(path, rows)
     info = {'spec': spec, 'sha256': file_hash(path), 'records': len(rows),
-            'sampling': 'official split prefix; feasibility run only' if spec.get('limit_per_split') else 'complete release'}
+            'sampling': sampling if spec.get('limit_per_split') or spec.get('limits_per_split') else 'complete release',
+            'records_scanned_per_split': scanned}
     if spec.get('label_file'):
         with urllib.request.urlopen(base + spec['label_file'], timeout=120) as handle:
             info['label_mapping'] = json.load(handle)

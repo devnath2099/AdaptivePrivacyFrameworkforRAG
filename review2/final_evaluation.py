@@ -2,7 +2,7 @@
 from pathlib import Path
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer
-from review2.common import load_stage, read_json, read_jsonl, write_json, write_jsonl, digest, finish_stage, seed_all
+from review2.common import load_stage, read_json, read_jsonl, write_json, write_jsonl, digest, finish_stage, seed_all, evaluation_cohort
 from review2.m2.alignment import encode
 from review2.m2.inference import predict, evaluate as evaluate_detector
 from review2.m3.evaluation import compare as compare_robustness
@@ -28,6 +28,7 @@ def evaluate(config, run_dir):
         raise ValueError('Final-test selection is already frozen; cannot silently retune this run')
     write_json(frozen_path, frozen)
     rows = read_jsonl(run_dir / 'm1/test.jsonl')
+    rows = evaluation_cohort(rows, config.get('evaluation', {}).get('test'), config['seed'], destination / 'test_cohort.json')
     labels = read_json(run_dir / 'm1/labels.json')
     counts = read_json(run_dir / 'm1/statistics.json')['train']['entities']
     comparison = {}

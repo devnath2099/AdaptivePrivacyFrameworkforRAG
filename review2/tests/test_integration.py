@@ -6,7 +6,8 @@ from review2.common import write_jsonl, file_hash, read_json, read_jsonl, load_s
 from review2.pipeline import execute
 
 
-def test_six_stage_pipeline(config, tokenizer, tmp_path):
+@pytest.mark.parametrize('bounded', [False, True])
+def test_six_stage_pipeline(config, tokenizer, tmp_path, bounded):
     tokenizer.save_pretrained(tmp_path / 'tokenizer')
     source = tmp_path / 'gold_fixture.jsonl'
     rows = []
@@ -26,13 +27,17 @@ def test_six_stage_pipeline(config, tokenizer, tmp_path):
     config['m2']['losses'] = ['ce']
     config['m3'].update(epsilons=[.001], lambdas=[.5], attacks=['email_obfuscation'])
     config['m4']['passes'] = [2]
+    if bounded:
+        config['evaluation'] = {'m2_validation': 4, 'm3_validation': 4,
+                                'm4_calibration': 4, 'm4_validation': 4, 'test': 4}
     config['m6']['observations'] = str(ROOT / 'configs/controlled_profiles.json')
     output = tmp_path / 'run'
     execute(config, output, evaluate_test=True)
     for stage in ('m1', 'm2', 'm3', 'm4', 'm5', 'm6'):
         assert load_stage(output, stage)['files']
     assert read_json(output / 'final_test/manifest.json')['selection_frozen_before_test']
-    assert len(read_jsonl(output / 'm6/decisions.jsonl')) == 6
+    assert len(read_jsonl(output / 'm6/decisions.jsonl')) == (4 if bounded else 6)
+    assert read_json(output / 'final_test/test_cohort.json')['selected'] == (4 if bounded else 6)
     assert all(not r['enforcement_executed'] for r in read_jsonl(output / 'm6/decisions.jsonl'))
     frozen = read_json(output / 'final_test/frozen_selection.json')
     execute(config, output, stages=(), evaluate_test=True)

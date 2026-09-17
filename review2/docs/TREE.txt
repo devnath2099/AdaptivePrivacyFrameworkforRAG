@@ -9,9 +9,16 @@ review2/
     smoke.json
   docs/
     ALGORITHMS.md
+    CONFIGURATION_AND_CONTRACTS.md
+    KAGGLE.md
     MIGRATION.md
     RESULTS.md
+    TECHNICAL_HANDOFF.txt
+    TREE.txt
   final_evaluation.py
+  kaggle/
+    review2_kaggle_bundle.zip
+    Review2_M1_M6_Kaggle.ipynb
   m1/
     __init__.py
     loaders.py
@@ -62,6 +69,7 @@ review2/
   README.md
   requirements.txt
   scripts/
+    build_kaggle_bundle.py
     export_application_corpora.py
     report.py
   tests/
@@ -84,6 +92,25 @@ outputs/application_corpora/
 outputs/pretrained_cpu/
   config.json
   environment.json
+  final_test/
+    calibration_metrics.json
+    clean_robustness.json
+    deberta_ce_predictions.jsonl
+    deberta_weighted_predictions.jsonl
+    detector_comparison.json
+    distilbert_ce_predictions.jsonl
+    distilbert_weighted_predictions.jsonl
+    ds_decisions.jsonl
+    ds_risk.jsonl
+    fgsm_attack_predictions.jsonl
+    fgsm_robustness.json
+    frozen_selection.json
+    manifest.json
+    max_decisions.jsonl
+    max_risk.jsonl
+    reliability.jsonl
+    weighted_decisions.jsonl
+    weighted_risk.jsonl
   m1/
     annotation_integrity.json
     calibration.jsonl
@@ -107,9 +134,44 @@ outputs/pretrained_cpu/
   m3/
     clean_detector.json
     clean_predictions.jsonl
+    comparison.json
+    fgsm_e0.0001_l0.5/
+    manifest.json
+    selected.json
     standard_continuation/
     validation_attacks.jsonl
+  m4/
+    calibration_logits.pt
+    comparison.json
+    manifest.json
+    raw_reliability.jsonl
+    reliability.jsonl
+    reliability.svg
+    selected.json
+    temperature.json
+    temperature_mc10_reliability.jsonl
+    temperature_mc5_reliability.jsonl
+    temperature_reliability.jsonl
+    validation_mc_logits.pt
+  m5/
+    comparison.json
+    conflict_experiment.json
+    ds_risk.jsonl
+    manifest.json
+    max_risk.jsonl
+    risk.jsonl
+    weighted_risk.jsonl
+  m6/
+    comparison.json
+    controlled_comparison.json
+    decisions.jsonl
+    manifest.json
+    policies.json
+    profiles.json
+    risk_method_policy_comparison.json
+    sensitivity.json
   run.log
+  status.json
 outputs/smoke/
   config.json
   environment.json
