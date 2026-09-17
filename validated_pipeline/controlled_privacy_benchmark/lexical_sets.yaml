@@ -1,0 +1,15 @@
+version: 1
+train:
+  id: lex_train_v1
+  marker_prefix: TRAIN_PLACEHOLDER
+  topic: [compound interest, gross revenue, cell biology]
+  medical: [HbA1c, blood sugar, cholesterol]
+  attribute: [salary, diagnosis, age]
+  collection: [research, hospital, employment]
+heldout:
+  id: lex_heldout_v1
+  marker_prefix: HELDOUT_PLACEHOLDER
+  topic: [operating margin, photosynthesis, depreciation]
+  medical: [hypertension, anemia, migraine]
+  attribute: [location, income, disease]
+  collection: [survey, insurance, clinical]

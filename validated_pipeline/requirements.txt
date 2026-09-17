@@ -1,0 +1,3 @@
+# Exact versions observed in the verification environment.
+# Select a compatible CUDA PyTorch wheel for the target GPU runtime.
+-r TEST_ENVIRONMENT.txt

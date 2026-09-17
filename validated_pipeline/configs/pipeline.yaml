@@ -1,0 +1,60 @@
+version: 1
+seed: 42
+source_manifest: configs/sources.v1.yaml
+active_tasks:
+  sensitivity:
+    kind: categorical
+    classes: [low, medium, high]
+  privacy_relevant_intent:
+    kind: categorical
+    classes: [general_information, personal_data_request, personal_medical_request, personal_financial_request, identity_or_reidentification_request]
+  threat_content:
+    kind: multilabel
+    labels: [re_identification, attribute_inference, membership_inference]
+evidence:
+  spacy_model: en_core_web_sm
+  require_spacy: true
+weak_labels:
+  backend: snorkel
+  epochs: 500
+  # Preserve an explicit unanimous categorical LF vote only when train-only
+  # diagnostics show Snorkel gives that class zero argmax support.
+  unanimous_lf_fallback_for_snorkel_suppressed_classes: true
+model:
+  name: microsoft/deberta-base
+  revision: 0d1b43ccf21b5acd9f4e5f7b077fa698f05cf195
+  max_length: 128
+  dropout: 0.1
+  unfreeze_last_n_layers: 0
+task_weights:
+  sensitivity: 1.0
+  privacy_relevant_intent: 1.0
+  threat_content: 1.0
+training:
+  device: auto
+  batch_size: 16
+  learning_rate: 0.00001
+  weight_decay: 0.01
+  checkpoint_every_batches: 100
+  m3_epochs: 5
+  m4_epochs: 3
+m4:
+  epsilon: 0.0005
+  lambda_adv: 0.5
+  adv_val_batch_size: 4
+  epsilon_candidates: [0.0001, 0.0005, 0.001]
+  lambda_adv_candidates: [0.25, 0.5, 1.0]
+m5:
+  T_mc: 20
+  temperature_iterations: 100
+  calibration_bins: 15
+  diagnostic_passes: [10, 20, 30]
+augmentation:
+  enabled: false
+  count: 1500
+  max_synthetic_training_examples: 1500
+  max_ratio_to_natural_train: 0.05
+profiles:
+  overnight_50k: {healthcaremagic: 20000, natural_questions: 15000, tat_qa: 15000}
+  scale_50k: {healthcaremagic: 20000, natural_questions: 15000, tat_qa: 15000}
+  scale_25k: {healthcaremagic: 10000, natural_questions: 7500, tat_qa: 7500}

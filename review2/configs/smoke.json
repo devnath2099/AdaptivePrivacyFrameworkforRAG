@@ -1,0 +1,175 @@
+{
+  "seed": 42,
+  "device": "cpu",
+  "threads": 2,
+  "run_kind": "external_data_tiny_random_model_smoke",
+  "m1": {
+    "sources": [
+      {
+        "kind": "huggingface_jsonl",
+        "source_id": "piibench",
+        "dataset_id": "Pritesh-2711/pii-bench",
+        "revision": "713f76a486e83c498ab173076abc9cca63918ae3",
+        "files": {
+          "train": "data/train.jsonl",
+          "validation": "data/validation.jsonl",
+          "test": "data/test.jsonl"
+        },
+        "label_file": "label_mapping.json",
+        "limit_per_split": 60
+      }
+    ],
+    "ratios": {
+      "train": 0.7,
+      "validation": 0.1,
+      "calibration": 0.1,
+      "test": 0.1
+    },
+    "calibration_fraction": 0.2,
+    "invalid_annotation": "quarantine",
+    "wordpiece_alignment": true,
+    "repair_orphan_i": true
+  },
+  "m2": {
+    "models": [
+      {
+        "id": "deberta",
+        "family": "deberta",
+        "name": "microsoft/deberta-base",
+        "revision": "0d1b43ccf21b5acd9f4e5f7b077fa698f05cf195",
+        "tiny": true,
+        "tokenizer": "distilbert-base-uncased",
+        "tokenizer_revision": "12040accade4e8a0f71eabdb258fecc2e7e948be"
+      },
+      {
+        "id": "distilbert",
+        "family": "distilbert",
+        "name": "distilbert-base-uncased",
+        "revision": "12040accade4e8a0f71eabdb258fecc2e7e948be",
+        "tiny": true
+      }
+    ],
+    "losses": [
+      "ce",
+      "weighted"
+    ],
+    "lengths": [
+      128,
+      256,
+      512
+    ],
+    "max_span_truncation": 0.01
+  },
+  "training": {
+    "epochs": 1,
+    "batch_size": 4,
+    "learning_rate": 0.001,
+    "weight_decay": 0.01,
+    "patience": 2,
+    "grad_clip": 1.0,
+    "checkpoint_every": 10
+  },
+  "m3": {
+    "epochs": 1,
+    "epsilons": [
+      0.0001,
+      0.001
+    ],
+    "lambdas": [
+      0.5
+    ],
+    "attacks": [
+      "character_substitution",
+      "separator_insertion",
+      "whitespace",
+      "symbol_replacement",
+      "email_obfuscation",
+      "phone_formatting",
+      "digit_words",
+      "case",
+      "token_splitting"
+    ]
+  },
+  "m4": {
+    "iterations": 60,
+    "passes": [
+      5,
+      10,
+      20,
+      30,
+      50
+    ],
+    "bins": 15,
+    "max_latency_ratio": 12
+  },
+  "m5": {
+    "method": "ds",
+    "type_tiers": {},
+    "unknown_type_tier": 2,
+    "type_weights": {},
+    "independent_groups": [],
+    "conflict_limit": 0.999999,
+    "basis": "Controlled configurable assumption: all unmapped categories assigned High; not legal classification or risk ground truth. Replace only with documented mappings and validation evidence."
+  },
+  "m6": {
+    "policies": [
+      {
+        "id": "weak",
+        "epsilon": 8.0,
+        "coverage": 0.5,
+        "protected_types": [
+          "*"
+        ],
+        "mechanisms": {
+          "word": "WPM",
+          "number": "NPM",
+          "phrase": "PPM"
+        },
+        "fallback": "block"
+      },
+      {
+        "id": "medium",
+        "epsilon": 2.0,
+        "coverage": 0.8,
+        "protected_types": [
+          "*"
+        ],
+        "mechanisms": {
+          "word": "WPM",
+          "number": "NPM",
+          "phrase": "PPM"
+        },
+        "fallback": "block"
+      },
+      {
+        "id": "strong",
+        "epsilon": 0.5,
+        "coverage": 1.0,
+        "protected_types": [
+          "*"
+        ],
+        "mechanisms": {
+          "word": "WPM",
+          "number": "NPM",
+          "phrase": "PPM"
+        },
+        "fallback": "block"
+      }
+    ],
+    "observations": "review2/configs/controlled_profiles.json",
+    "allow_controlled": true,
+    "uncertainty_strength": 0.5,
+    "utility_min": 0.6,
+    "max_latency_ms": 100.0,
+    "uncertainty_grid": [
+      0.0,
+      0.5,
+      1.0
+    ],
+    "utility_grid": [
+      0.5,
+      0.6,
+      0.8
+    ]
+  }
+}

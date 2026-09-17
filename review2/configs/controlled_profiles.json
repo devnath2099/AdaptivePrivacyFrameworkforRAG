@@ -1,0 +1,5 @@
+[
+  {"policy_id": "weak", "case_id": "fixture_a", "split": "validation", "privacy": 0.35, "utility": 0.95, "latency_ms": 1.0, "provenance": "controlled_fixture", "experiment_id": "optimizer_contract_test_v1"},
+  {"policy_id": "medium", "case_id": "fixture_a", "split": "validation", "privacy": 0.7, "utility": 0.8, "latency_ms": 3.0, "provenance": "controlled_fixture", "experiment_id": "optimizer_contract_test_v1"},
+  {"policy_id": "strong", "case_id": "fixture_a", "split": "validation", "privacy": 0.95, "utility": 0.65, "latency_ms": 7.0, "provenance": "controlled_fixture", "experiment_id": "optimizer_contract_test_v1"}
+]

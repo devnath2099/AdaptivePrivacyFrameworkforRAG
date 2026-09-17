@@ -1,0 +1,23 @@
+{
+  "configuration": {
+    "seed": 42,
+    "ontology_version": 1
+  },
+  "config_hash": "bdd06e3139e47ed54220700b7082864642dfb0ea764b4452a2c36fb12ae3b987",
+  "seed": 42,
+  "timestamp": "2026-09-17T04:47:15.094994+00:00",
+  "dataset_sources": "constructed_operational_ontology",
+  "split": "template_definitions",
+  "record_count": 0,
+  "git_commit": "a0c98a6bf4923db9419c15d60292adb4e95e8b16",
+  "checkpoint_lineage": null,
+  "files": {
+    "heldout_test_templates.yaml": "777929afc939e0ac6a8bd3ea08d37e6c1554366702d8bf4b978be0e07fa60e45",
+    "lexical_sets.yaml": "1c050fd34c477b501e789a2543fd7b83497a72d5a6827847d92aa3e3710d7ec9",
+    "ontology.yaml": "0be775275d6fdacb744788549f3de0669142add96b468689cdc79f2489b9bb70",
+    "scenario_definitions.yaml": "4c9a831a5bc151044b5ea1edcb339bb41fedd050505aba9aa2adb3f080fdf47e",
+    "train_templates.yaml": "593102e6461a319acff5015bf87bcd80c8bde09165d61a1e9669b7052b12eebf"
+  },
+  "evaluation_name": "controlled ontology-compliance evaluation",
+  "generation_status": "definitions only; no benchmark model results"
+}

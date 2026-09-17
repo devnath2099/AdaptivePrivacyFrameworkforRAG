@@ -1,0 +1,35 @@
+version: 1
+seed: 42
+allow_synthetic_fallback: false
+normalization: NFKC_whitespace_casefold
+sources:
+  healthcaremagic:
+    adapter: huggingface
+    dataset_id: lavita/ChatDoctor-HealthCareMagic-100k
+    revision: 505443eac4e99ccedeffbb6f640061223d1d4bb3
+    splits: [train]
+    fields: {query: input, context: output}
+    group: source_row_conversation
+    domain: medical
+    cap: 20000
+    license_notes: No license declared in retrieved dataset API metadata; verify upstream terms before redistribution.
+  natural_questions:
+    adapter: huggingface
+    dataset_id: sentence-transformers/natural-questions
+    revision: f9e894e1081e206e577b4eaa9ee6de2b06ae6f17
+    splits: [train]
+    fields: {query: query, context: answer}
+    group: normalized_answer_hash_proxy
+    domain: general_information
+    cap: 15000
+    license_notes: Derived NQ question-answer pairs; source document IDs absent. Equal answer hashes are grouped conservatively, not claimed to recover all Wikipedia document identities. Check upstream NQ terms.
+  tat_qa:
+    adapter: tatqa_official
+    dataset_id: NExTplusplus/TAT-QA
+    revision: 870accc41953dcde885aabeb963d94aabdc0fbc3
+    splits: [train, dev, test]
+    fields: {query: 'questions[].question', source_record_id: 'questions[].uid', group_id: table.uid, context: table_and_paragraphs}
+    group: table_uid_and_identical_context
+    domain: financial_report
+    cap: 15000
+    license_notes: Official repository MIT license; financial report contents retain upstream terms. Train/dev/test source questions are pooled as unlabeled text for new privacy splits; QA answers are unused. Never load test_gold as additional data.

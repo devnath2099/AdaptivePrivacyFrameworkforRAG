@@ -1,0 +1,14 @@
+version: 1
+evaluation_name: controlled ontology-compliance evaluation
+scope: Constructed query semantics only; not gold clinical labels or natural-user generalization.
+sensitivity:
+  low: Explicit generic information without private-data signal.
+  medium: Private topic with limited personal context and no direct identifier or sensitive personal result.
+  high: Direct identifier/credential, personal medical or financial information, or confidential personal-data request.
+intent: Request meaning determines intent; source/domain never determines a target.
+threats:
+  re_identification: Request to identify an anonymous person or reveal identifying/contact information.
+  attribute_inference: Request to infer a specified individual's sensitive attribute.
+  membership_inference: Request to determine whether an individual occurs in a dataset/list/cohort.
+future_contract: Future risk tier and expected policy are scenario declarations only, not an implemented M6 selector.
+future_policy_codes: [P0_low, P1_moderate, P2_high, P3_restrictive_fallback]

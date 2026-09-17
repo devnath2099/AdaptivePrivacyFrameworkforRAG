@@ -1,0 +1,17 @@
+version: 1
+dataset_id: ai4privacy/pii-masking-200k
+revision: 7c22e6816b8fc24b7781e9f4e22016c698842dd0
+split: train
+language: en
+max_records: 1000
+allow_synthetic_fallback: false
+evaluation_name: synthetic general-PII evidence evaluation
+fields: {text: source_text, spans: privacy_mask, language: language}
+supported_types:
+  EMAIL: email
+  PHONE: phone
+  PHONENUMBER: phone
+  PASSWORD: credential
+  SSN: identifier
+  IBAN: identifier
+license_notes: Check upstream dataset card terms. Synthetic general PII only, never a medical benchmark or natural training source.

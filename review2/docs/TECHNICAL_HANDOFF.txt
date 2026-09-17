@@ -1,0 +1,2138 @@
+# TECHNICAL HANDOFF — FINAL 9-MODULE THESIS ARCHITECTURE FOR REVIEW 2
+
+## 0. STATUS OF THIS DOCUMENT
+
+This document is the current architectural source of truth for the M.Tech thesis:
+
+**Deep Learning Based Adaptive Privacy Framework for Retrieval Augmented Generation**
+
+The architecture is now structurally locked to **9 modules** for Review 2.
+
+IMPORTANT:
+
+* The **nine module responsibilities and interfaces are locked**.
+* The **final formal module titles are NOT locked**.
+* Do not invent or finalize new module names unless explicitly instructed.
+* Temporary functional labels M1–M9 may be used during implementation.
+* Some methodologies, particularly in M4 and M5, are intentionally implemented with comparative experiments so that the final method can be selected empirically.
+* Do not restructure the architecture merely to increase or reduce module count.
+* Do not split ordinary RAG retrieval and generation into separate thesis modules.
+* Do not merge genuinely distinct research stages merely to simplify the architecture.
+
+The architecture must support four outputs from the same design:
+
+1. thesis Chapter 3 documentation;
+2. module/submodule architecture and flowcharts;
+3. formal algorithms/pseudocode;
+4. executable modular Python implementation with tests and experimental artifacts.
+
+---
+
+# 1. RESEARCH PROBLEM
+
+Privacy-preserving RAG systems generally use predetermined privacy mechanisms or fixed privacy configurations.
+
+A fixed configuration cannot explicitly adapt its privacy–utility–latency trade-off according to the privacy characteristics of an individual input.
+
+The proposed system therefore follows:
+
+**Privacy Evidence Detection
+→ Robustness and Reliability Estimation
+→ Privacy Risk Estimation
+→ Adaptive Privacy Decision
+→ Privacy Enforcement
+→ Local RAG
+→ Explainability, Evaluation and Deployment**
+
+The central research hypothesis is:
+
+> An adaptive privacy framework that selects protection according to input-specific privacy evidence can achieve a better privacy–utility–latency trade-off than fixed privacy configurations.
+
+This is a hypothesis to be experimentally tested, not assumed to be true.
+
+---
+
+# 2. FUNDAMENTAL DESIGN PRINCIPLE
+
+Deep learning is **NOT the privacy mechanism**.
+
+Deep learning provides privacy intelligence.
+
+The system must distinguish:
+
+### Privacy detection
+
+What privacy-sensitive information is present?
+
+### Robustness
+
+Will the detector still identify that information when it is obfuscated or adversarially modified?
+
+### Reliability
+
+How trustworthy is the detector's prediction?
+
+### Privacy risk
+
+What privacy concern results from the detected evidence?
+
+### Adaptive decision
+
+What protection configuration should be used for this input?
+
+### Enforcement
+
+Actually transform/protect sensitive information according to the selected configuration.
+
+### RAG
+
+Retrieve relevant local information and generate a response using privacy-protected context.
+
+### Evaluation
+
+Determine whether adaptation actually improves privacy, utility and latency.
+
+### Explainability/deployment
+
+Explain and record the complete privacy decision and provide an integrated executable system.
+
+These responsibilities must remain separated even if internal methodologies later change.
+
+---
+
+# 3. WHY THE PREVIOUS ARCHITECTURE WAS CHANGED
+
+The previous design used:
+
+Raw multi-domain QA datasets
+→ rule/NER evidence
+→ Snorkel weak supervision
+→ multi-task DeBERTa predictions
+→ uncertainty
+→ Dempster–Shafer risk
+→ privacy policy.
+
+The multi-task targets included concepts such as:
+
+* sensitivity;
+* intent;
+* threat;
+* disclosure/risk-related targets.
+
+This created a methodological weakness because the downstream neural model was learning labels that were themselves generated from project-defined rules.
+
+Real experiments also showed severe weak-supervision limitations, including approximately 49–66% all-abstain behavior for several targets and some classes receiving no Snorkel argmax predictions.
+
+The revised architecture therefore makes one major correction:
+
+> Use externally annotated typed PII supervision for the primary privacy-detection task instead of manufacturing the primary labels through Snorkel.
+
+Consequently:
+
+* Snorkel is removed as the primary supervision mechanism.
+* The old multi-head sensitivity/intent/threat architecture is removed.
+* DeBERTa is trained directly for typed privacy-entity detection.
+* Privacy risk is handled downstream rather than pretending that high-level risk labels are externally available.
+* Privacy enforcement and local RAG are explicitly implemented so that the privacy decision has an observable system consequence.
+
+---
+
+# 4. DATASET ROLES
+
+Do not force every dataset into one artificial schema or pretend that every dataset provides privacy ground truth.
+
+Different datasets have different roles.
+
+## 4.1 Primary privacy supervision
+
+Use an externally annotated PII benchmark such as PIIBench as the primary source for typed PII detection.
+
+The exact benchmark version, canonical label set and preparation procedure must be verified and recorded.
+
+Do not hard-code assumptions such as “48 types” or “82 types” until the exact dataset release used by the implementation has been inspected.
+
+---
+
+## 4.2 Medical/domain evaluation
+
+Use an appropriate medical/private-domain corpus for application-level or external-generalization evaluation.
+
+HealthCareMagic may be used as a medical RAG/application corpus.
+
+It must NOT automatically be treated as authoritative gold PII supervision.
+
+If an externally annotated clinical PHI benchmark such as i2b2/n2c2 is legally/accessibly available, it may be used for external medical-domain evaluation.
+
+---
+
+## 4.3 Public/non-private RAG control corpus
+
+A public QA corpus such as Natural Questions or HotpotQA may be retained for RAG/control evaluation if needed.
+
+Its purpose is not to manufacture privacy labels.
+
+---
+
+# 5. FINAL STRUCTURAL ARCHITECTURE
+
+The system contains exactly nine major modules:
+
+**M1 — Privacy Data Integration**
+
+**M2 — Privacy Entity Detection**
+
+**M3 — Adversarial Privacy Robustness Learning**
+
+**M4 — Privacy Uncertainty Quantification and Calibration**
+
+**M5 — Privacy Risk Aggregation**
+
+**M6 — Adaptive Privacy Policy Selection**
+
+**M7 — Adaptive Privacy Enforcement**
+
+**M8 — Local Retrieval-Augmented Generation and System Evaluation**
+
+**M9 — Explainable Privacy Decision Analytics, Audit and Deployment**
+
+These are functional labels only.
+
+Final formal module names will be assigned after manual methodological review.
+
+---
+
+# 6. M1 — PRIVACY DATA INTEGRATION
+
+## 6.1 Purpose
+
+Create a reliable, reproducible, leakage-safe privacy-learning corpus and the supporting evidence/artifacts required by downstream modules.
+
+M1 answers:
+
+> What externally annotated privacy evidence is available and how can heterogeneous sources be transformed into a consistent training/evaluation representation?
+
+M1 does NOT determine final privacy risk.
+
+---
+
+## 6.2 Inputs
+
+Possible inputs:
+
+* PIIBench or equivalent externally annotated PII sources;
+* optional external PHI benchmark;
+* medical RAG/application corpus;
+* public/control RAG corpus;
+* source metadata;
+* dataset configuration.
+
+---
+
+## 6.3 Core processes
+
+M1 must support:
+
+1. source acquisition/loading;
+2. dataset version validation;
+3. schema harmonization;
+4. canonical record construction;
+5. PII span/type normalization;
+6. annotation alignment validation;
+7. duplicate detection;
+8. leakage-safe splitting;
+9. source/group preservation;
+10. corpus statistics;
+11. entity-distribution statistics;
+12. provenance/artifact generation.
+
+---
+
+## 6.4 Canonical privacy record
+
+A minimal canonical structure should support:
+
+* record_id;
+* source_id;
+* source_record_id;
+* text;
+* source_annotations;
+* canonical_spans;
+* split;
+* group_id if required;
+* metadata.
+
+Do not unnecessarily duplicate large metadata fields inside every row when they belong in manifests.
+
+---
+
+## 6.5 Auxiliary evidence
+
+Regex or general-purpose NER may be retained as:
+
+* baselines;
+* auxiliary evidence;
+* data-quality checks.
+
+They must not silently become ground truth.
+
+Where possible compare auxiliary detectors against externally annotated spans using:
+
+* precision;
+* recall;
+* F1;
+* coverage.
+
+---
+
+## 6.6 Data splitting
+
+Prefer official benchmark splits where available.
+
+Otherwise splitting must be:
+
+* reproducible;
+* source-aware;
+* duplicate-safe;
+* group-safe where relevant.
+
+Random seed 42 may be used for reproducibility if consistent with benchmark preparation, but do not claim that seed 42 is scientifically superior.
+
+---
+
+## 6.7 Outputs
+
+M1 should produce artifacts such as:
+
+* privacy supervision dataset;
+* RAG corpus;
+* dataset manifest;
+* split manifest;
+* statistics report;
+* annotation integrity report;
+* entity distribution report;
+* provenance metadata.
+
+---
+
+## 6.8 Expected implementation substance
+
+M1 should contain independently testable components for:
+
+* loaders;
+* normalization;
+* annotation validation;
+* span alignment;
+* deduplication;
+* splitting;
+* statistics;
+* manifests;
+* artifact contracts.
+
+Do not pad line count artificially.
+
+---
+
+# 7. M2 — PRIVACY ENTITY DETECTION
+
+## 7.1 Purpose
+
+Train a deep-learning model to detect typed privacy-sensitive entities directly from externally annotated PII spans.
+
+M2 answers:
+
+> Which privacy-sensitive entities occur in this text, where are they located, what type are they, and how confident is the detector?
+
+---
+
+## 7.2 Input
+
+Text:
+
+x = (w1, w2, ..., wn)
+
+with training-time typed entity spans.
+
+---
+
+## 7.3 Output
+
+For inference:
+
+E(x) = {(s_i, e_i, t_i, p_i)}
+
+where:
+
+* s_i = entity start;
+* e_i = entity end;
+* t_i = predicted PII type;
+* p_i = prediction confidence.
+
+---
+
+## 7.4 Primary methodology
+
+DeBERTa-based token classification is the primary current methodology.
+
+Use BIO/BIO-compatible sequence labeling as required by the selected benchmark representation.
+
+Do not claim DeBERTa is universally state-of-the-art.
+
+---
+
+## 7.5 Model comparison
+
+At least one lighter transformer baseline must be supported.
+
+The purpose is to test:
+
+> Does the detection improvement from DeBERTa justify its additional inference cost?
+
+Compare:
+
+* detection F1;
+* recall;
+* rare-type performance;
+* latency;
+* memory/compute requirements.
+
+---
+
+## 7.6 Loss
+
+Support:
+
+* standard cross entropy;
+* weighted cross entropy.
+
+Focal loss may be added as an experimental alternative if justified.
+
+Do not rebalance the entire dataset artificially without evidence.
+
+---
+
+## 7.7 Training
+
+Required:
+
+* tokenization;
+* token/span alignment;
+* dynamic label mapping;
+* attention masks;
+* loss masks;
+* training loop;
+* validation loop;
+* early stopping;
+* checkpointing;
+* resume support;
+* best-model selection.
+
+Hyperparameters must be configurable.
+
+---
+
+## 7.8 Sequence length
+
+Do not blindly preserve the previous 128-token limit.
+
+Run a coverage analysis for candidate lengths such as:
+
+128
+256
+512
+
+Measure:
+
+* percentage of records truncated;
+* percentage of gold PII spans affected by truncation;
+* memory/runtime effect.
+
+Select a defensible value.
+
+---
+
+## 7.9 Metrics
+
+Primary:
+
+* strict entity/span precision;
+* strict entity/span recall;
+* strict entity/span F1.
+
+Additional:
+
+* micro F1;
+* macro F1;
+* per-type F1;
+* per-source F1;
+* rare-class recall;
+* PII/non-PII recall;
+* latency.
+
+Token accuracy must not be the primary metric because the O class can dominate.
+
+---
+
+## 7.10 Removed old outputs
+
+Do NOT recreate the previous heads for:
+
+* intent;
+* threat;
+* sensitivity;
+* disclosure;
+* profile ID
+
+unless future independent evidence explicitly justifies them.
+
+---
+
+# 8. M3 — ADVERSARIAL PRIVACY ROBUSTNESS LEARNING
+
+## 8.1 Purpose
+
+Improve the robustness of M2 against adversarial perturbation and privacy-entity obfuscation.
+
+M3 answers:
+
+> Does the privacy detector continue detecting sensitive entities when their representation is deliberately altered?
+
+---
+
+## 8.2 Locked Review-2 methodology
+
+FGSM is locked as the adversarial-training methodology for Review 2.
+
+Do not replace FGSM with FreeLB or another method unless explicitly instructed after Review 2.
+
+---
+
+## 8.3 Core formulation
+
+For model representation H and loss L:
+
+r_adv = epsilon × sign(gradient_H L)
+
+H_adv = H + r_adv
+
+Training should combine clean and adversarial objectives.
+
+Conceptually:
+
+L_total = L_clean + lambda_adv L_adv
+
+where epsilon and lambda_adv are configurable and selected using validation evidence.
+
+---
+
+## 8.4 Training flow
+
+M2 checkpoint
+→ clean forward pass
+→ gradient computation
+→ FGSM perturbation
+→ adversarial forward pass
+→ combined loss
+→ optimizer update
+→ validation
+→ robust checkpoint.
+
+---
+
+## 8.5 Realistic textual robustness evaluation
+
+FGSM alone is insufficient as a real-world robustness evaluation.
+
+Create label-preserving textual perturbations including examples such as:
+
+* character substitution;
+* separator insertion;
+* whitespace modification;
+* symbol replacement;
+* email obfuscation;
+* phone-number formatting;
+* digit-to-word conversion;
+* case modification;
+* token splitting.
+
+Example:
+
+[john.doe@gmail.com](mailto:john.doe@gmail.com)
+
+may become a semantically equivalent obfuscated representation.
+
+The attack must not change the underlying privacy label.
+
+---
+
+## 8.6 Required comparison
+
+Compare:
+
+M2 clean detector
+
+versus
+
+M3 FGSM-hardened detector.
+
+Evaluate both on:
+
+* clean data;
+* adversarial/obfuscated data.
+
+---
+
+## 8.7 Metrics
+
+Include:
+
+* clean F1;
+* adversarial F1;
+* robustness degradation;
+* attack success rate where meaningful;
+* clean-performance degradation;
+* training overhead;
+* inference overhead.
+
+M3 survives as a research module only if its robustness role can be empirically demonstrated.
+
+---
+
+# 9. M4 — PRIVACY UNCERTAINTY QUANTIFICATION AND CALIBRATION
+
+## 9.1 Purpose
+
+Estimate how reliable the privacy detector's predictions are before those predictions influence risk and policy decisions.
+
+M4 answers:
+
+> How much should the adaptive system trust the detector's confidence for this input?
+
+---
+
+## 9.2 Current candidate methodologies
+
+Two distinct techniques are currently implemented/evaluated:
+
+### Temperature Scaling
+
+Used for confidence calibration.
+
+### MC Dropout
+
+Used for predictive uncertainty approximation.
+
+These are not conceptually identical.
+
+---
+
+## 9.3 Temperature scaling
+
+Given logits z:
+
+p = softmax(z / T)
+
+Fit positive temperature T on calibration data only:
+
+T* = argmin_T NLL(D_cal)
+
+Do not update detector weights during temperature fitting.
+
+---
+
+## 9.4 MC Dropout
+
+Perform multiple stochastic forward passes with dropout active.
+
+For T_MC passes:
+
+p_bar = (1 / T_MC) Σ p_t
+
+Estimate uncertainty using appropriate predictive statistics such as entropy/variation.
+
+---
+
+## 9.5 MC Dropout is NOT permanently guaranteed
+
+This module must explicitly compare:
+
+A. raw softmax;
+
+B. temperature scaling;
+
+C. temperature scaling + MC Dropout.
+
+Measure whether MC Dropout contributes useful error discrimination beyond calibrated confidence.
+
+If MC Dropout adds large latency without useful downstream information, it may be removed after Review 2 without changing the architecture.
+
+Therefore downstream modules must consume a generic reliability/uncertainty interface rather than depend directly on MC Dropout internals.
+
+---
+
+## 9.6 MC-pass experiment
+
+Candidate stochastic pass counts may include:
+
+5
+10
+20
+30
+50
+
+Measure:
+
+* uncertainty convergence;
+* prediction stability;
+* error discrimination;
+* latency.
+
+Do not select 30 or 50 merely because another implementation used it.
+
+---
+
+## 9.7 Metrics
+
+Include:
+
+* Expected Calibration Error;
+* Negative Log-Likelihood;
+* Brier score where appropriate;
+* reliability diagram;
+* error-detection performance;
+* risk-coverage behavior;
+* latency.
+
+---
+
+## 9.8 Output
+
+M4 should provide:
+
+* calibrated confidence;
+* uncertainty score;
+* calibration metadata;
+* reliability statistics.
+
+---
+
+# 10. M5 — PRIVACY RISK AGGREGATION
+
+## 10.1 Purpose
+
+Convert entity-level privacy evidence into an input/context-level privacy-risk representation required by adaptive policy selection.
+
+M5 answers:
+
+> Given the detected sensitive entities and the reliability of those detections, what privacy risk should the policy engine consider?
+
+---
+
+## 10.2 Current Review-2 methodology
+
+Dempster–Shafer Evidence Theory is the primary current candidate.
+
+However, DS is NOT assumed to be superior.
+
+The final formal module name must remain undecided until manual review/experimental comparison.
+
+---
+
+## 10.3 Inputs
+
+Potential evidence includes:
+
+* detected PII types;
+* number of entities;
+* entity-type diversity;
+* calibrated confidence;
+* uncertainty;
+* entity combinations;
+* observable context features.
+
+Avoid counting multiple highly correlated values from the same model as independent evidence without justification.
+
+---
+
+## 10.4 Dempster–Shafer representation
+
+For frame of discernment:
+
+Theta_R = {Low, Medium, High, Critical}
+
+define mass function:
+
+m: 2^Theta_R -> [0,1]
+
+with:
+
+m(empty) = 0
+
+and:
+
+Σ m(A) = 1.
+
+Support:
+
+* evidence masses;
+* Dempster combination;
+* conflict coefficient;
+* belief;
+* plausibility;
+* pignistic probability where required.
+
+---
+
+## 10.5 Critical restriction
+
+DO NOT create unexplained mappings such as:
+
+EMAIL -> 0.7 Medium
+
+BANK_ACCOUNT -> 0.9 Critical
+
+and describe those numbers as ground truth.
+
+Mass construction must be:
+
+* explicit;
+* configurable;
+* traceable;
+* replaceable;
+* experimentally evaluated.
+
+If external standards/literature support category ordering or policy significance, store those mappings separately from the DS fusion algorithm.
+
+---
+
+## 10.6 Mandatory aggregation comparison
+
+Implement a common risk aggregation interface and at least three methods:
+
+### A. Maximum-risk baseline
+
+Use the strongest detected evidence.
+
+### B. Transparent weighted aggregation baseline
+
+Use an explicitly documented weighted aggregation rule.
+
+### C. Dempster–Shafer aggregation
+
+Use evidence-theoretic combination.
+
+The architecture must permit all three without changing downstream M6.
+
+---
+
+## 10.7 Evaluation
+
+Compare methods using:
+
+* stability;
+* conflict handling;
+* sensitivity analysis;
+* runtime;
+* downstream policy behavior;
+* end-to-end privacy/utility results when available.
+
+Do not claim DS is superior until the experiment supports it.
+
+---
+
+# 11. M6 — ADAPTIVE PRIVACY POLICY SELECTION
+
+## 11.1 Purpose
+
+M6 is the central adaptive decision module.
+
+It answers:
+
+> Given the privacy risk and reliability of the evidence, what privacy protection configuration should be applied to this input?
+
+M6 must be substantial.
+
+It must NOT be implemented as only:
+
+if risk == LOW: P1
+if risk == MEDIUM: P2
+if risk == HIGH: P3
+if risk == CRITICAL: P4.
+
+---
+
+## 11.2 Policy space
+
+Define:
+
+Π = {π1, π2, ..., πK}
+
+Each policy must represent executable privacy parameters.
+
+A policy may include:
+
+* epsilon;
+* perturbation strength;
+* protected entity categories;
+* entity coverage;
+* mechanism selection;
+* fallback behavior;
+* other M7 parameters.
+
+Do not copy the previous cloud-oriented P1–P4 definitions containing IPFE/OT/LSH unless those mechanisms are actually implemented.
+
+---
+
+## 11.3 Current optimization concept
+
+The current preferred formulation is constrained policy optimization.
+
+For every policy π, maintain/estimate:
+
+P(π) = privacy protection characteristic
+
+U(π) = utility characteristic
+
+L(π) = latency/overhead characteristic.
+
+For input x, M5 and M4 provide the evidence needed to determine required protection:
+
+P_required(x).
+
+Conceptually select:
+
+π* = argmin L(π)
+
+subject to:
+
+P(π) >= P_required(x)
+
+and:
+
+U(π) >= U_min.
+
+This means:
+
+> Select the lowest-overhead policy that satisfies the required privacy protection while preserving acceptable utility.
+
+---
+
+## 11.4 Why not arbitrary weighted optimization
+
+Avoid immediately defining:
+
+J = alpha P + beta U + gamma L
+
+with arbitrary values such as:
+
+alpha = 0.5
+beta = 0.3
+gamma = 0.2.
+
+Such values create unnecessary methodological questions unless experimentally justified.
+
+---
+
+## 11.5 Uncertainty handling
+
+M4 reliability information may make policy selection more conservative.
+
+Example concept:
+
+higher uncertainty
+→ less confidence in detected privacy evidence
+→ stronger fallback/protection requirement.
+
+The exact mathematical relationship must remain configurable and testable.
+
+---
+
+## 11.6 Required subfunctions
+
+M6 implementation should include:
+
+* policy repository;
+* policy schema;
+* policy candidate generator;
+* policy profiler;
+* privacy constraint evaluator;
+* utility constraint evaluator;
+* latency/cost evaluator;
+* feasibility checker;
+* policy optimizer;
+* uncertainty-aware adjustment;
+* fallback selector;
+* fixed-policy baseline selector;
+* decision logger;
+* sensitivity-analysis engine.
+
+This ensures M6 is a genuine algorithmic module rather than a mapping table.
+
+---
+
+## 11.7 Evaluation
+
+M6 must eventually be compared against:
+
+* no privacy;
+* fixed weak privacy;
+* fixed strong privacy;
+* proposed adaptive privacy.
+
+Policy characteristics must be tuned/profiled using development/validation experiments, never final test results.
+
+---
+
+# 12. M7 — ADAPTIVE PRIVACY ENFORCEMENT
+
+## 12.1 Purpose
+
+M7 converts the abstract policy selected by M6 into actual privacy protection.
+
+M7 answers:
+
+> How should the sensitive entities be transformed according to the selected privacy policy?
+
+---
+
+## 12.2 Current methodology
+
+Use entity-level Local Differential Privacy inspired by LPRAG.
+
+The mechanism family includes:
+
+* Word Perturbation Mechanism (WPM);
+* Number Perturbation Mechanism (NPM);
+* Phrase Perturbation Mechanism (PPM);
+* adaptive privacy-budget allocation.
+
+---
+
+## 12.3 Policy interface
+
+Input:
+
+* sensitive entity;
+* entity type;
+* selected policy;
+* epsilon;
+* coverage/protection settings.
+
+Output:
+
+* protected entity/context;
+* applied mechanism;
+* privacy parameters;
+* audit information.
+
+---
+
+## 12.4 Adaptive epsilon
+
+The system must NOT pretend that changing epsilon dynamically can retroactively alter a static pre-perturbed vector index.
+
+The current local-RAG implementation should therefore keep privacy enforcement modular and support policy-conditioned perturbation of sensitive retrieved context before generation.
+
+This is an adaptation of LPRAG-style mechanisms to the local RAG threat model.
+
+Do not claim that the complete original LPRAG privacy architecture is reproduced unchanged.
+
+---
+
+## 12.5 WPM
+
+Word-like private entities should use the selected word perturbation mechanism.
+
+Implementation should include:
+
+* candidate generation;
+* semantic similarity handling where required;
+* randomized selection;
+* epsilon-controlled probability;
+* reproducibility controls.
+
+---
+
+## 12.6 NPM
+
+Numeric entities require number-aware perturbation rather than inappropriate word substitution.
+
+Support the selected numeric perturbation mechanism according to the source methodology.
+
+---
+
+## 12.7 PPM
+
+Multi-token phrases require phrase-aware protection and privacy-budget composition.
+
+Do not independently perturb components in a way that violates the intended privacy accounting.
+
+---
+
+## 12.8 Required implementation
+
+Include:
+
+* policy parser;
+* entity-type router;
+* mechanism router;
+* privacy-budget allocator;
+* WPM;
+* NPM;
+* PPM;
+* epsilon validation;
+* composition/accounting;
+* protected-context constructor;
+* perturbation metadata;
+* reproducible test mode;
+* stochastic evaluation mode.
+
+---
+
+## 12.9 Evaluation
+
+Measure:
+
+* privacy protection/leakage;
+* semantic preservation;
+* perturbation success;
+* generation utility impact;
+* latency.
+
+---
+
+# 13. M8 — LOCAL RAG AND SYSTEM EVALUATION
+
+## 13.1 Purpose
+
+M8 provides the local RAG environment required to determine whether adaptive privacy actually works end-to-end.
+
+Do not split ordinary retrieval and generation into separate thesis modules.
+
+M8 answers:
+
+> What happens to retrieval quality, answer quality, privacy leakage and latency when the selected privacy policy is actually enforced in a local RAG system?
+
+---
+
+## 13.2 Retrieval pipeline
+
+Support:
+
+Corpus
+→ document preprocessing
+→ embeddings
+→ local vector index
+→ query embedding
+→ similarity search
+→ Top-k contexts.
+
+FAISS or another appropriate local vector index may be used.
+
+The exact embedding model must be configuration-driven.
+
+---
+
+## 13.3 Integration with M7
+
+For the current local threat model:
+
+Query
+→ local retrieval
+→ retrieved contexts
+→ privacy entity detection where required
+→ M7 policy-conditioned perturbation
+→ protected contexts
+→ local generation.
+
+Raw sensitive retrieved context must not accidentally bypass M7 and reach the generation stage when privacy enforcement is enabled.
+
+---
+
+## 13.4 Local generation
+
+Use a locally executable or free-tier-compatible LLM appropriate for available hardware.
+
+The generator must be replaceable through configuration.
+
+Do not tightly couple the research pipeline to one LLM.
+
+---
+
+## 13.5 Retrieval metrics
+
+Where relevance labels permit, include:
+
+* Recall@k;
+* MRR;
+* nDCG@k;
+* retrieval latency.
+
+---
+
+## 13.6 Generation metrics
+
+Use task-appropriate metrics.
+
+Potential metrics include:
+
+* answer F1;
+* ROUGE where appropriate;
+* semantic similarity/BERTScore where appropriate;
+* answer quality evaluation;
+* generation latency.
+
+Do not use every metric merely to increase metric count.
+
+---
+
+## 13.7 Privacy evaluation
+
+M8 must support privacy leakage evaluation.
+
+At minimum include direct entity leakage/extraction measurements.
+
+Where compatible with the final threat model, integrate a recognized leakage-evaluation methodology/framework rather than relying exclusively on custom string matching.
+
+The final leakage benchmark/framework should be selected during detailed M8 review.
+
+---
+
+## 13.8 Central thesis experiment
+
+The most important end-to-end experiment is:
+
+### Configuration A
+
+No privacy.
+
+### Configuration B
+
+Fixed weak privacy.
+
+### Configuration C
+
+Fixed strong privacy.
+
+### Configuration D
+
+Proposed adaptive privacy.
+
+Keep constant where possible:
+
+* corpus;
+* query set;
+* retriever;
+* Top-k;
+* generator;
+* evaluation protocol.
+
+Measure:
+
+Privacy:
+
+* entity leakage;
+* attack/extraction success;
+* other selected leakage metrics.
+
+Utility:
+
+* retrieval quality;
+* generation quality.
+
+Efficiency:
+
+* end-to-end latency;
+* module-level latency;
+* computational overhead.
+
+The experiment directly tests the thesis hypothesis.
+
+---
+
+## 13.9 Ablation framework
+
+M8 should also provide a common experiment runner capable of evaluating:
+
+M2:
+light transformer vs DeBERTa.
+
+M3:
+clean vs FGSM.
+
+M4:
+raw vs calibrated vs MC-Dropout-assisted.
+
+M5:
+max vs weighted vs DS.
+
+M6:
+fixed vs adaptive.
+
+M7:
+different protection strengths/policies.
+
+This avoids creating separate ad-hoc experiment scripts for every result.
+
+---
+
+# 14. M9 — EXPLAINABLE PRIVACY DECISION ANALYTICS, AUDIT AND DEPLOYMENT
+
+## 14.1 Purpose
+
+M9 integrates the complete system and makes each privacy decision understandable and auditable.
+
+Keep the old conceptual role:
+
+**Explainable Privacy Decision Analytics + Deployment/Audit/System Integration.**
+
+Do not complicate the final module title during implementation.
+
+---
+
+## 14.2 Explainability requirement
+
+Explain the actual decision process.
+
+For a query, the system should be capable of showing:
+
+Input
+→ detected sensitive entity
+→ predicted entity type
+→ confidence
+→ calibrated confidence
+→ uncertainty
+→ privacy risk
+→ selected privacy policy
+→ selected epsilon/mechanism
+→ actual perturbation
+→ retrieved/protected context
+→ final response.
+
+This is more important than blindly attaching SHAP to the system.
+
+---
+
+## 14.3 SHAP
+
+SHAP is NOT currently mandatory.
+
+Do not implement SHAP merely because the old architecture mentioned explainability.
+
+If later required, it may be evaluated as an additional explanation method.
+
+The primary explanation must remain faithful to the actual privacy-decision chain.
+
+---
+
+## 14.4 Audit records
+
+Each query/run should support structured audit data containing:
+
+* query/run ID;
+* detected entities;
+* confidence;
+* uncertainty;
+* risk result;
+* policy decision;
+* privacy mechanism;
+* epsilon/settings;
+* perturbation actions;
+* retrieval metadata;
+* generation metadata;
+* latency;
+* errors/fallbacks.
+
+Avoid storing unnecessary raw sensitive information in logs.
+
+---
+
+## 14.5 Deployment
+
+M9 should eventually provide:
+
+* pipeline orchestration;
+* model/checkpoint loading;
+* configuration loading;
+* service/API interface;
+* experiment/run management;
+* health/status checks;
+* audit storage;
+* error handling;
+* fallback handling;
+* reproducibility metadata.
+
+Deployment should not consume Review-2 development effort before M1–M7 are functional.
+
+---
+
+# 15. OFFLINE DEVELOPMENT FLOW
+
+The conceptual offline development flow is:
+
+M1
+↓
+M2
+↓
+M3
+↓
+M4
+↓
+M5
+↓
+M6
+
+M7 and M8 provide the enforcement/RAG environment needed for policy profiling and end-to-end validation.
+
+There are two legitimate development feedback loops.
+
+---
+
+## 15.1 Robustness feedback
+
+M2
+→ M3 robustness evaluation
+→ validation result
+→ M2/M3 configuration refinement.
+
+Do not use test data for this loop.
+
+---
+
+## 15.2 Policy feedback
+
+M6
+→ M7 enforcement
+→ M8 RAG/evaluation
+→ measured privacy–utility–latency behavior
+→ M6 policy-profile refinement.
+
+Again, this must use development/validation data.
+
+Final test evaluation remains untouched.
+
+---
+
+# 16. ONLINE INFERENCE FLOW
+
+The runtime system should conceptually behave as:
+
+User Query
+↓
+M2/M3 trained privacy detector
+↓
+M4 calibrated confidence / uncertainty
+↓
+M5 privacy risk aggregation
+↓
+M6 adaptive privacy policy selection
+↓
+Local retrieval in M8
+↓
+M7 adaptive privacy enforcement on sensitive retrieved context
+↓
+Protected context
+↓
+Local generation in M8
+↓
+Response
+↓
+M9 explanation/audit/deployment output.
+
+M9 receives information throughout the pipeline rather than operating only after generation.
+
+---
+
+# 17. DATA DISCIPLINE
+
+Use strict dataset roles.
+
+## Training
+
+Used for neural-model fitting.
+
+## Validation
+
+Used for:
+
+* architecture comparison;
+* hyperparameter selection;
+* adversarial parameter selection;
+* model selection;
+* M5 configuration comparison;
+* M6 development.
+
+## Calibration
+
+Used only for post-hoc calibration such as temperature scaling.
+
+## Test
+
+Used only after architecture/configuration selection is complete.
+
+Never tune:
+
+* learning rate;
+* epsilon;
+* FGSM strength;
+* MC passes;
+* DS parameters;
+* M6 thresholds;
+* policy configurations
+
+against final test results.
+
+---
+
+# 18. EXPERIMENTAL PHILOSOPHY
+
+Every major design choice must be supported by at least one of:
+
+1. peer-reviewed literature;
+2. benchmark protocol;
+3. recognized standard;
+4. controlled validation experiment;
+5. ablation/comparative study.
+
+Do not create an experiment merely to justify a decision that has already been declared superior.
+
+Allow methods to fail.
+
+Examples:
+
+If MC Dropout adds no useful uncertainty information:
+
+remove/replace it later.
+
+If DS does not improve over a simple aggregator:
+
+replace it later.
+
+If DeBERTa gives negligible gain over a much faster model:
+
+document the trade-off and reconsider final selection.
+
+The architecture interfaces should survive these changes.
+
+---
+
+# 19. REQUIRED REVIEW-2 COMPARISONS
+
+At minimum support the following.
+
+## M2
+
+Lighter transformer
+vs
+DeBERTa.
+
+## M3
+
+Standard training
+vs
+FGSM adversarial training.
+
+Evaluate clean and textual-obfuscation sets.
+
+## M4
+
+Raw softmax
+vs
+temperature scaling
+vs
+temperature scaling + MC Dropout.
+
+## M5
+
+Maximum-risk
+vs
+weighted aggregation
+vs
+Dempster–Shafer.
+
+## M6
+
+Fixed policy
+vs
+adaptive policy on controlled cases.
+
+## M7
+
+Different privacy configurations/epsilon values.
+
+## M8
+
+No privacy
+vs
+fixed weak
+vs
+fixed strong
+vs
+adaptive privacy.
+
+---
+
+# 20. ARTIFACT CONTRACTS
+
+Every major generated artifact should include enough information to reproduce and verify it.
+
+Record where applicable:
+
+* dataset version;
+* source ID;
+* source record ID;
+* canonical record ID;
+* split;
+* parent record ID;
+* random seed;
+* configuration hash;
+* code revision;
+* model checkpoint;
+* attack configuration;
+* calibration configuration;
+* risk configuration;
+* policy configuration;
+* privacy mechanism configuration;
+* experiment ID.
+
+Downstream modules should validate artifact compatibility where practical.
+
+---
+
+# 21. TESTING PHILOSOPHY
+
+Every module must contain meaningful tests.
+
+Tests must verify the actual algorithm, not merely that a function executes.
+
+---
+
+## M1 tests
+
+Test:
+
+* schema harmonization;
+* span integrity;
+* annotation alignment;
+* duplicate handling;
+* split leakage;
+* reproducibility.
+
+---
+
+## M2 tests
+
+Test:
+
+* tokenizer alignment;
+* BIO encoding;
+* loss masking;
+* weighted loss;
+* span reconstruction;
+* metric correctness;
+* checkpoint loading.
+
+---
+
+## M3 tests
+
+Test:
+
+* FGSM gradient generation;
+* perturbation bound;
+* epsilon behavior;
+* adversarial loss;
+* clean/adversarial training path;
+* textual attack label preservation.
+
+---
+
+## M4 tests
+
+Test:
+
+* positive temperature;
+* calibration-only fitting;
+* frozen detector weights;
+* MC stochasticity;
+* deterministic non-MC path;
+* uncertainty computation.
+
+---
+
+## M5 tests
+
+Test:
+
+* valid mass normalization;
+* evidence combination;
+* conflict handling;
+* belief/plausibility;
+* max baseline;
+* weighted baseline;
+* deterministic behavior.
+
+---
+
+## M6 tests
+
+Test:
+
+* policy-schema validity;
+* constraint satisfaction;
+* feasible selection;
+* infeasible fallback;
+* uncertainty handling;
+* fixed-policy baseline;
+* adaptive selection.
+
+---
+
+## M7 tests
+
+Test:
+
+* epsilon validation;
+* entity routing;
+* WPM;
+* NPM;
+* PPM;
+* privacy-budget accounting;
+* stochastic/reproducible modes;
+* context integrity.
+
+---
+
+## M8 tests
+
+Test:
+
+* index construction;
+* Top-k retrieval;
+* RAG interface;
+* M7 invocation;
+* protected context reaches generator;
+* raw context cannot bypass enforcement;
+* metric implementation.
+
+---
+
+## M9 tests
+
+Test:
+
+* complete decision explanation;
+* audit serialization;
+* missing-stage handling;
+* configuration loading;
+* pipeline orchestration;
+* deployment fallback.
+
+---
+
+# 22. REVIEW-2 IMPLEMENTATION TARGET
+
+The user needs approximately **65–70% implementation** for Review 2.
+
+Do not interpret this as a literal line-count target.
+
+The recommended implementation priority is:
+
+### Fully functional
+
+M1
+M2
+M3
+M4
+M5
+
+### Strong functional implementation
+
+M6
+
+### Functional enforcement prototype
+
+M7
+
+### Integrated RAG prototype
+
+M8
+
+### Basic integration/audit skeleton
+
+M9
+
+This gives Review 2 a coherent demonstration:
+
+Data
+→ trained detector
+→ robust detector
+→ calibrated/reliability-aware predictions
+→ risk aggregation
+→ adaptive policy selection
+→ actual privacy enforcement
+→ preliminary local RAG result.
+
+---
+
+# 23. MODULE IMPLEMENTATION STANDARD
+
+Every module should be substantial enough to stand as an independently testable computational component.
+
+Each module should contain, where applicable:
+
+* algorithm implementation;
+* configuration;
+* schemas/interfaces;
+* processing;
+* artifact generation;
+* validation;
+* metrics;
+* tests;
+* experiment runner;
+* logging;
+* error handling.
+
+Do NOT artificially create 300 lines merely to satisfy a perceived module-size requirement.
+
+However, do not create trivial wrapper modules either.
+
+A module that contains only an if/else mapping or calls one external library function is not sufficiently substantial.
+
+---
+
+# 24. REQUIRED FORMAT FOR FUTURE MODULE DOCUMENTATION
+
+When generating detailed Chapter 3 documentation for any module, use the following structure:
+
+### Module Mx
+
+#### 1. Research Purpose
+
+Why does this module exist?
+
+#### 2. Input
+
+Exact input variables/artifacts.
+
+#### 3. Output
+
+Exact output variables/artifacts.
+
+#### 4. Methodology
+
+Named algorithm/model/method.
+
+#### 5. Literature Basis
+
+Which research work/benchmark supports using it?
+
+#### 6. Mathematical Formulation
+
+Define all variables before using them.
+
+#### 7. Submodules
+
+Break implementation into meaningful processing stages.
+
+#### 8. Detailed Processing Flow
+
+Step-by-step transformation.
+
+#### 9. Algorithm
+
+Formal pseudocode suitable for thesis inclusion.
+
+#### 10. Parameters
+
+List parameters and ranges.
+
+#### 11. Parameter Justification
+
+For every important value state whether it comes from:
+
+* literature;
+* benchmark;
+* hardware constraint;
+* validation experiment;
+* ablation.
+
+#### 12. Training/Fitting Procedure
+
+If applicable.
+
+#### 13. Dataset Split Usage
+
+Explicitly state which split each operation accesses.
+
+#### 14. Evaluation Metrics
+
+Define appropriate metrics.
+
+#### 15. Ablation/Comparison
+
+Identify alternatives.
+
+#### 16. Failure Criterion
+
+State what result would indicate that the selected method should be rejected/replaced.
+
+#### 17. Output Contract
+
+Define what downstream modules receive.
+
+#### 18. Implementation Components
+
+Map the methodology to code files/classes/functions.
+
+#### 19. Tests
+
+Specify unit/integration/experimental tests.
+
+#### 20. Downstream Dependency
+
+Explain why the next module needs the output.
+
+---
+
+# 25. REQUIRED FORMAT FOR SUBMODULE FLOWCHARTS
+
+When generating a module flowchart:
+
+1. show exact module input;
+2. show preprocessing;
+3. show each algorithmic stage;
+4. show decision/branch points;
+5. show training loops where applicable;
+6. show validation feedback separately;
+7. show artifact creation;
+8. show exact module output;
+9. distinguish offline training from online inference;
+10. avoid vague boxes such as “AI Processing” or “Privacy Analysis.”
+
+Every box should describe an actual computation.
+
+---
+
+# 26. REQUIRED FORMAT FOR ALGORITHMS
+
+Thesis algorithms must:
+
+* define inputs;
+* define outputs;
+* initialize variables;
+* show actual computational steps;
+* show loops/conditions where meaningful;
+* reference mathematical quantities used in the module;
+* avoid implementation-specific boilerplate;
+* avoid fake complexity;
+* terminate with explicit outputs.
+
+Do not convert Python source line-by-line into pseudocode.
+
+The algorithm should describe the research method.
+
+---
+
+# 27. REQUIRED FORMAT FOR CODE GENERATION
+
+Before generating/modifying code:
+
+1. inspect repository structure;
+2. inspect existing implementation;
+3. identify reusable code;
+4. identify obsolete assumptions;
+5. inspect configuration;
+6. inspect schemas;
+7. inspect tests;
+8. inspect existing artifacts;
+9. create a migration map;
+10. modify incrementally.
+
+Do not blindly rewrite the repository.
+
+Preserve working infrastructure such as:
+
+* artifact contracts;
+* provenance metadata;
+* leakage-safe splits;
+* checkpointing;
+* resume support;
+* FGSM infrastructure;
+* calibration infrastructure;
+* experiment launchers;
+* tests
+
+when those components remain methodologically valid.
+
+---
+
+# 28. IMPORTANT PROHIBITIONS
+
+Do NOT:
+
+* restore Snorkel as the primary supervision source;
+* call weak supervision ground truth;
+* recreate obsolete sensitivity/intent/threat heads without evidence;
+* manually create authoritative labels without defensible annotation protocol;
+* use test data for model/policy selection;
+* hard-code unexplained DS masses;
+* treat confidence and uncertainty as automatically independent evidence;
+* implement M6 as only risk-tier-to-policy if/else rules;
+* invent arbitrary privacy/utility/latency weights;
+* assume MC Dropout is automatically useful;
+* assume DS is automatically superior;
+* claim adaptive privacy is better before M8 demonstrates it;
+* claim complete LPRAG equivalence if enforcement placement differs;
+* use SHAP merely to increase apparent complexity;
+* split retrieval and generation into artificial research modules;
+* optimize code line count instead of methodological substance.
+
+---
+
+# 29. ARCHITECTURE CHANGE TOLERANCE AFTER REVIEW 2
+
+The architecture must deliberately allow limited methodological changes after Review 2.
+
+Potential allowed changes without redesigning the nine-module structure:
+
+### M2
+
+Change selected transformer if comparison supports another model.
+
+### M4
+
+Remove MC Dropout if it fails cost-benefit evaluation.
+
+### M5
+
+Replace DS with the winning aggregation method.
+
+### M6
+
+Refine the optimization formulation.
+
+### M7
+
+Refine privacy-policy mechanics or perturbation placement.
+
+### M8
+
+Change embedding model, local LLM or leakage benchmark.
+
+### M9
+
+Add an XAI technique if later justified.
+
+The **responsibility of each module remains stable**.
+
+This is why downstream interfaces must be generic rather than hard-wired to one experimental method.
+
+---
+
+# 30. FINAL ARCHITECTURAL FLOW
+
+The architecture to preserve is:
+
+**M1 — Privacy Data Integration**
+
+↓
+
+**M2 — Privacy Entity Detection**
+
+↓
+
+**M3 — Adversarial Privacy Robustness Learning**
+
+↓
+
+**M4 — Privacy Uncertainty Quantification and Calibration**
+
+↓
+
+**M5 — Privacy Risk Aggregation**
+
+↓
+
+**M6 — Adaptive Privacy Policy Selection**
+
+↓
+
+**M8 — Local Retrieval**
+
+↓
+
+**M7 — Adaptive Privacy Enforcement on Retrieved Sensitive Context**
+
+↓
+
+**M8 — Protected-Context Local Generation**
+
+↓
+
+**Response**
+
+with:
+
+**M9 — Explainability, Audit and Deployment**
+
+observing/integrating the complete decision chain.
+
+Development feedback:
+
+M3 → M2/M3 model refinement
+
+and:
+
+M8 evaluation → M6 policy refinement
+
+using validation/development data only.
+
+---
+
+# 31. FINAL REVIEW-2 RESEARCH STORY
+
+The project should be explainable in one coherent sequence:
+
+> Externally annotated privacy data is integrated and validated. A DeBERTa-based model learns typed PII detection. FGSM adversarial training improves detector robustness. Calibration and uncertainty estimation quantify prediction reliability. Entity-level evidence is aggregated into privacy risk. An adaptive policy module selects an appropriate protection configuration. Entity-level LDP mechanisms enforce the selected policy on sensitive context. A local RAG pipeline retrieves information and generates responses using protected context. Finally, the system evaluates the privacy–utility–latency trade-off and provides explainable decision analytics, audit information and deployment integration.
+
+The project contribution is NOT any one of these algorithms in isolation.
+
+The thesis contribution is the **adaptive composition of privacy intelligence, risk-aware policy selection and enforceable privacy protection inside an evaluated RAG pipeline**, together with experimental evidence comparing adaptive privacy against fixed privacy configurations.
+
+---
+
+# 32. FINAL INSTRUCTION TO ANY CODING OR DOCUMENTATION AGENT
+
+Do not make architectural decisions silently.
+
+If an implementation detail is unspecified:
+
+1. check existing project code/configuration;
+2. check the project's research sources;
+3. use a configurable implementation where possible;
+4. document the assumption;
+5. avoid presenting an assumption as a research fact.
+
+For every generated module, be prepared to answer:
+
+**Why does this module exist?**
+
+**What exact algorithm does it execute?**
+
+**What are its inputs and outputs?**
+
+**Where did its important parameter values come from?**
+
+**How is it trained/fitted?**
+
+**Which dataset split does it use?**
+
+**What experiment validates it?**
+
+**What baseline challenges it?**
+
+**What would cause the method to be rejected?**
+
+**Which downstream module genuinely requires its output?**
+
+If these questions cannot be answered, flag the design weakness instead of hiding it with additional code.

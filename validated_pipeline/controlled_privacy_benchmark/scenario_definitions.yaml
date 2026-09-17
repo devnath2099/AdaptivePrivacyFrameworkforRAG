@@ -1,0 +1,10 @@
+version: 1
+scenarios:
+  general: {rule_id: O1, sensitivity: low, privacy_relevant_intent: general_information, threat_content: [0, 0, 0], future_risk_tier: low, future_expected_policy: P0_low}
+  limited: {rule_id: O2, sensitivity: medium, privacy_relevant_intent: general_information, threat_content: [0, 0, 0], future_risk_tier: medium, future_expected_policy: P1_moderate}
+  personal_data: {rule_id: O3, sensitivity: high, privacy_relevant_intent: personal_data_request, threat_content: [0, 0, 0], future_risk_tier: high, future_expected_policy: P2_high}
+  medical: {rule_id: O4, sensitivity: high, privacy_relevant_intent: personal_medical_request, threat_content: [0, 0, 0], future_risk_tier: high, future_expected_policy: P2_high}
+  financial: {rule_id: O5, sensitivity: high, privacy_relevant_intent: personal_financial_request, threat_content: [0, 0, 0], future_risk_tier: high, future_expected_policy: P2_high}
+  reid: {rule_id: O6, sensitivity: high, privacy_relevant_intent: identity_or_reidentification_request, threat_content: [1, 0, 0], future_risk_tier: critical, future_expected_policy: P3_restrictive_fallback}
+  attribute: {rule_id: O7, sensitivity: high, privacy_relevant_intent: personal_data_request, threat_content: [0, 1, 0], future_risk_tier: high, future_expected_policy: P2_high}
+  membership: {rule_id: O8, sensitivity: high, privacy_relevant_intent: personal_data_request, threat_content: [0, 0, 1], future_risk_tier: high, future_expected_policy: P2_high}
