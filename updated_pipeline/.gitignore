@@ -1,0 +1,14 @@
+fypvenv/
+.env
+__pycache__/
+*.pyc
+*.csv
+*.zip
+*.pth
+# Ignore raw data files
+data/raw/
+
+# Ignore large generated outputs and matrices
+outputs/
+outputs01/
+output1/

@@ -1,0 +1,191 @@
+seed: 42
+
+datasets:
+  healthcare:
+    hf_id: "lavita/ChatDoctor-HealthcareMagic-100k"
+    domain: "medical"
+    split: "train"
+  fiqa:
+    hf_id: "BeIR/fiqa"
+    hf_config: "corpus"
+    domain: "financial"
+    # NOTE: BeIR/fiqa's "corpus" config only exposes a split named
+    # "corpus" (confirmed against the dataset's viewer/schema on
+    # huggingface.co/datasets/BeIR/fiqa) -- there is no "train" split
+    # under this config, so "corpus" is used here instead of "train".
+    split: "corpus"
+  hotpotqa:
+    hf_id: "hotpotqa/hotpot_qa"
+    hf_config: "distractor"
+    domain: "multi_hop_qa"
+    split: "validation"
+  nq:
+    hf_id: "sentence-transformers/natural-questions"
+    domain: "general_qa"
+    # NOTE: sentence-transformers/natural-questions only has a "train"
+    # split (confirmed against the dataset's schema on
+    # huggingface.co/datasets/sentence-transformers/natural-questions)
+    # -- there is no "validation" split, so "train" is used here instead.
+    split: "train"
+
+max_samples_per_dataset:
+  healthcare: null
+  fiqa: null
+  hotpotqa: null
+  nq: null
+
+data_cache:
+  enabled: true
+  root: "data/raw"
+  prefer_local: true
+  download_if_missing: true
+
+preprocessing:
+  min_text_length: 3
+  lowercase_for_dedup: true
+  unicode_normalize_form: "NFKC"
+  n_process: 1
+
+evidence:
+  spacy_model: "en_core_web_sm"
+  regex_patterns:
+    - email
+    - phone
+    - money
+    - date
+    - url
+    - account_number
+
+embeddings:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  batch_size: 16
+  device: "cuda"
+
+label_taxonomy:
+  entity_tags:
+    - has_person
+    - has_organization
+    - has_location
+    - has_contact_identifier
+  sensitivity:
+    - low
+    - medium
+    - high
+  intent:
+    - general_information
+    - personal_information_request
+    - medical_information_request
+    - financial_information_request
+    - identity_related_request
+  disclosure_scope:
+    - single_document
+    - multi_document
+  threat_content:
+    - re_identification
+    - attribute_inference
+    - membership_inference
+
+output_paths:
+  root: "outputs"
+  m1_dataset: "outputs/m1_unified_dataset.jsonl"
+  m1_stats: "outputs/m1_statistics.json"
+  m2_lf_matrix_dir: "outputs/m2_lf_matrices"
+  m2_weak_labels_dir: "outputs/m2_weak_labels"
+  m2_diagnostics: "outputs/m2_diagnostics.json"
+  m3_dir: "outputs/m3"
+
+split:
+  train_ratio: 0.8
+  validation_ratio: 0.1
+  test_ratio: 0.1
+  seed: 42
+  stratify_by_domain: true
+
+sampling_strategy: natural
+
+cache:
+  dir: "/content/drive/MyDrive/review1_cache"
+
+m3:
+  model_name: "microsoft/deberta-base"
+  max_length: 128
+  batch_size: 32
+  learning_rate: 1e-5
+  epochs: 3
+  weight_decay: 0.01
+  dropout_rate: 0.1
+  task_weights:
+    sensitivity: 1.0
+    intent: 1.0
+    disclosure_scope: 1.0
+    entity_tags: 1.0
+    threat_content: 1.0
+  evaluation_threshold: 0.5
+  device: "cuda"
+
+m4:
+  model_name: "microsoft/deberta-base"
+  max_length: 128
+  batch_size: 32
+  learning_rate: 1e-5
+  epochs: 3
+  weight_decay: 0.01
+  dropout_rate: 0.1
+  epsilon: 1e-3
+  lambda_adv: 1.0
+  adv_val_batch_size: 16
+  task_weights:
+    sensitivity: 1.0
+    intent: 1.0
+    disclosure_scope: 1.0
+    entity_tags: 1.0
+    threat_content: 1.0
+  evaluation_threshold: 0.5
+  device: "cuda"
+
+m5:
+  mc_passes: 20
+  calibration_bins: 10
+  multi_label_threshold: 0.5
+  batch_size: 32
+  seed: 42
+  temperature:
+    optimizer_type: "lbfgs"
+    learning_rate: 0.05
+    num_iterations: 100
+    mc_passes: 5
+    categorical_heads: ["sensitivity", "intent", "disclosure_scope"]
+    multi_label_heads: ["entity_tags", "threat_content"]
+    # Calibration split fraction (0.0-1.0 of val set)
+    calibration_fraction: 0.3
+    # Never fit on test/reference set
+    fit_on_calibration_only: true
+
+m6_decision:
+  uncertainty_threshold: 0.5
+  high_risk_sensitivity: "high"
+  critical_threats: ["re_identification"]
+  conservative_fallback: true
+  risk_score_thresholds:
+    critical: 0.70
+    high: 0.45
+    medium: 0.25
+    low: 0.0
+  task_weights:
+    sensitivity: 0.30
+    threat_content: 0.30
+    intent: 0.15
+    disclosure_scope: 0.10
+    entity_tags: 0.10
+  risk_triggers:
+    high_sensitivity_weight: 0.30
+    critical_threat_weight: 0.30
+    identity_related_weight: 0.15
+  policy_mapping:
+    low: P0_low
+    medium: P1_moderate
+    high: P2_high
+    critical: P3_restrictive_fallback
+  review2_note: >
+    Review-2 decision prototype only. RAG enforcement and policy mapping are deferred.
+    P0-P3 are temporary policy codes pending final privacy policy table.

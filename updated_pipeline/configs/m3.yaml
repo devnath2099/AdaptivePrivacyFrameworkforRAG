@@ -1,0 +1,18 @@
+seed: 42
+
+m3:
+  model_name: "microsoft/deberta-base"
+  max_length: 128
+  batch_size: 32
+  learning_rate: 1e-5
+  epochs: 3
+  weight_decay: 0.01
+  dropout_rate: 0.1
+  task_weights:
+    sensitivity: 1.0
+    intent: 1.0
+    disclosure_scope: 1.0
+    entity_tags: 1.0
+    threat_content: 1.0
+  evaluation_threshold: 0.5
+  device: "cuda"
