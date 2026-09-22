@@ -1,0 +1,98 @@
+{
+  "source": {
+    "dataset": "PIILO Dataset",
+    "release": 2,
+    "ref": "lburleigh/piilo-dataset",
+    "license": "Attribution 4.0 International (CC BY 4.0)",
+    "source_sha256": "8276cd44f3b2eb357dfb405b3c5d8e9f821388e984cbf66e92e7df03f1b13117"
+  },
+  "columns": [
+    "document",
+    "full_text",
+    "labels",
+    "tokens",
+    "trailing_whitespace"
+  ],
+  "statistics": {
+    "documents": 6807,
+    "tokens": 4992533,
+    "pii_positive_documents": 945,
+    "pii_negative_documents": 5862,
+    "entity_counts": {
+      "EMAIL": 39,
+      "ID_NUM": 78,
+      "NAME_STUDENT": 1365,
+      "PHONE_NUM": 6,
+      "STREET_ADDRESS": 2,
+      "URL_PERSONAL": 110,
+      "USERNAME": 6
+    },
+    "category_documents": {
+      "EMAIL": 24,
+      "ID_NUM": 33,
+      "NAME_STUDENT": 891,
+      "PHONE_NUM": 4,
+      "STREET_ADDRESS": 2,
+      "URL_PERSONAL": 72,
+      "USERNAME": 5
+    },
+    "label_counts": {
+      "B-EMAIL": 39,
+      "B-ID_NUM": 78,
+      "B-NAME_STUDENT": 1365,
+      "B-PHONE_NUM": 6,
+      "B-STREET_ADDRESS": 2,
+      "B-URL_PERSONAL": 110,
+      "B-USERNAME": 6,
+      "I-ID_NUM": 1,
+      "I-NAME_STUDENT": 1096,
+      "I-PHONE_NUM": 15,
+      "I-STREET_ADDRESS": 20,
+      "I-URL_PERSONAL": 1,
+      "O": 4989794
+    }
+  },
+  "exact_duplicate_excess": 0,
+  "normalized_duplicate_excess": 7,
+  "group_information": "Document ID and normalized text only; author identity unavailable. Semantic near duplicates not established.",
+  "official_labelled_splits": [
+    "train.json"
+  ],
+  "validation": "All native BIO sequences, lengths and character offsets validated without annotation repair.",
+  "observed_labels": [
+    "B-EMAIL",
+    "B-ID_NUM",
+    "B-NAME_STUDENT",
+    "B-PHONE_NUM",
+    "B-STREET_ADDRESS",
+    "B-URL_PERSONAL",
+    "B-USERNAME",
+    "I-ID_NUM",
+    "I-NAME_STUDENT",
+    "I-PHONE_NUM",
+    "I-STREET_ADDRESS",
+    "I-URL_PERSONAL",
+    "O"
+  ],
+  "model_labels": [
+    "O",
+    "B-EMAIL",
+    "I-EMAIL",
+    "B-ID_NUM",
+    "I-ID_NUM",
+    "B-NAME_STUDENT",
+    "I-NAME_STUDENT",
+    "B-PHONE_NUM",
+    "I-PHONE_NUM",
+    "B-STREET_ADDRESS",
+    "I-STREET_ADDRESS",
+    "B-URL_PERSONAL",
+    "I-URL_PERSONAL",
+    "B-USERNAME",
+    "I-USERNAME"
+  ],
+  "bio_closure_added": [
+    "I-EMAIL",
+    "I-USERNAME"
+  ]
+}

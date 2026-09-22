@@ -1,0 +1,17 @@
+{
+  "seed": 20260922,
+  "model": "microsoft/deberta-v3-small",
+  "device": "auto",
+  "max_length": 512,
+  "batch_size": 4,
+  "epochs": 3,
+  "learning_rate": 0.00002,
+  "weight_decay": 0.01,
+  "fractions": [25, 50, 75, 100],
+  "fgsm_epochs": 1,
+  "fgsm_epsilons": [0.001, 0.005, 0.01],
+  "fgsm_train_fraction": 100,
+  "mc_passes": [5, 10, 20, 30, 50],
+  "mc_nll_tolerance": 0.01,
+  "ece_bins": 15
+}

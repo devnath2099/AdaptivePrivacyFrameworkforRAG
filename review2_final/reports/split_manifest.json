@@ -1,0 +1,166 @@
+{
+  "source_sha256": "8276cd44f3b2eb357dfb405b3c5d8e9f821388e984cbf66e92e7df03f1b13117",
+  "seed": 20260922,
+  "proportions": {
+    "train": 0.7,
+    "calibration": 0.1,
+    "validation": 0.1,
+    "test": 0.1
+  },
+  "strategy": "rarest-label-first grouped multilabel allocation; deduplication first",
+  "splits": {
+    "train": {
+      "documents": 4764,
+      "tokens": 3489311,
+      "pii_positive_documents": 660,
+      "pii_negative_documents": 4104,
+      "entity_counts": {
+        "EMAIL": 29,
+        "ID_NUM": 49,
+        "NAME_STUDENT": 924,
+        "PHONE_NUM": 1,
+        "STREET_ADDRESS": 1,
+        "URL_PERSONAL": 81,
+        "USERNAME": 2
+      },
+      "category_documents": {
+        "EMAIL": 17,
+        "ID_NUM": 23,
+        "NAME_STUDENT": 624,
+        "PHONE_NUM": 1,
+        "STREET_ADDRESS": 1,
+        "URL_PERSONAL": 51,
+        "USERNAME": 2
+      },
+      "label_counts": {
+        "B-EMAIL": 29,
+        "B-ID_NUM": 49,
+        "B-NAME_STUDENT": 924,
+        "B-PHONE_NUM": 1,
+        "B-STREET_ADDRESS": 1,
+        "B-URL_PERSONAL": 81,
+        "B-USERNAME": 2,
+        "I-ID_NUM": 1,
+        "I-NAME_STUDENT": 745,
+        "I-PHONE_NUM": 3,
+        "I-STREET_ADDRESS": 10,
+        "I-URL_PERSONAL": 1,
+        "O": 3487464
+      }
+    },
+    "calibration": {
+      "documents": 681,
+      "tokens": 510528,
+      "pii_positive_documents": 96,
+      "pii_negative_documents": 585,
+      "entity_counts": {
+        "EMAIL": 4,
+        "ID_NUM": 12,
+        "NAME_STUDENT": 139,
+        "PHONE_NUM": 3,
+        "URL_PERSONAL": 14,
+        "USERNAME": 2
+      },
+      "category_documents": {
+        "EMAIL": 2,
+        "ID_NUM": 3,
+        "NAME_STUDENT": 89,
+        "PHONE_NUM": 1,
+        "URL_PERSONAL": 7,
+        "USERNAME": 1
+      },
+      "label_counts": {
+        "B-EMAIL": 4,
+        "B-ID_NUM": 12,
+        "B-NAME_STUDENT": 139,
+        "B-PHONE_NUM": 3,
+        "B-URL_PERSONAL": 14,
+        "B-USERNAME": 2,
+        "I-NAME_STUDENT": 116,
+        "I-PHONE_NUM": 9,
+        "O": 510229
+      }
+    },
+    "validation": {
+      "documents": 683,
+      "tokens": 488998,
+      "pii_positive_documents": 96,
+      "pii_negative_documents": 587,
+      "entity_counts": {
+        "EMAIL": 2,
+        "ID_NUM": 10,
+        "NAME_STUDENT": 129,
+        "PHONE_NUM": 1,
+        "URL_PERSONAL": 8,
+        "USERNAME": 1
+      },
+      "category_documents": {
+        "EMAIL": 2,
+        "ID_NUM": 3,
+        "NAME_STUDENT": 89,
+        "PHONE_NUM": 1,
+        "URL_PERSONAL": 7,
+        "USERNAME": 1
+      },
+      "label_counts": {
+        "B-EMAIL": 2,
+        "B-ID_NUM": 10,
+        "B-NAME_STUDENT": 129,
+        "B-PHONE_NUM": 1,
+        "B-URL_PERSONAL": 8,
+        "B-USERNAME": 1,
+        "I-NAME_STUDENT": 109,
+        "I-PHONE_NUM": 3,
+        "O": 488735
+      }
+    },
+    "test": {
+      "documents": 679,
+      "tokens": 503696,
+      "pii_positive_documents": 93,
+      "pii_negative_documents": 586,
+      "entity_counts": {
+        "EMAIL": 4,
+        "ID_NUM": 7,
+        "NAME_STUDENT": 173,
+        "PHONE_NUM": 1,
+        "STREET_ADDRESS": 1,
+        "URL_PERSONAL": 7,
+        "USERNAME": 1
+      },
+      "category_documents": {
+        "EMAIL": 3,
+        "ID_NUM": 4,
+        "NAME_STUDENT": 89,
+        "PHONE_NUM": 1,
+        "STREET_ADDRESS": 1,
+        "URL_PERSONAL": 7,
+        "USERNAME": 1
+      },
+      "label_counts": {
+        "B-EMAIL": 4,
+        "B-ID_NUM": 7,
+        "B-NAME_STUDENT": 173,
+        "B-PHONE_NUM": 1,
+        "B-STREET_ADDRESS": 1,
+        "B-URL_PERSONAL": 7,
+        "B-USERNAME": 1,
+        "I-NAME_STUDENT": 126,
+        "I-STREET_ADDRESS": 10,
+        "O": 503366
+      }
+    }
+  },
+  "files": {
+    "train": "fba4fd09cfe84e65714d4443c8cea23f38f1bc22250040aa0e449aef5bfa4ead",
+    "calibration": "bdb52061131c1c3528c3c50e24df533fae3b271eda332dc70fb120d8aa09725d",
+    "validation": "d09987b0ba71d5de25ef338314c2134a448db8aa6dd47645fb6e9232773d8723",
+    "test": "6ba8244580c40fa03447eb517727e74f7de594b02ded4f6d161bf8f4c81a509f"
+  },
+  "coverage_warnings": [
+    "calibration: no STREET_ADDRESS gold entities; recall is undefined",
+    "validation: no STREET_ADDRESS gold entities; recall is undefined"
+  ],
+  "leakage_check": "No document or normalized duplicate group crosses splits",
+  "labels_sha256": "0b7e0de2685b6b8cacdf32b4a305486a8481de2c7feadd33686b08c119e8235c"
+}

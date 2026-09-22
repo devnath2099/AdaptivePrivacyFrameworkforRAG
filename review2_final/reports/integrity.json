@@ -1,0 +1,11 @@
+{
+  "split_hashes_match": {
+    "train": true,
+    "calibration": true,
+    "validation": true,
+    "test": true
+  },
+  "subsets_nested": true,
+  "test_evaluation_opened": false,
+  "notebook_code_cells_parse": true
+}

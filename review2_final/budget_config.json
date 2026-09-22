@@ -1,0 +1,22 @@
+{
+  "seed": 20260922,
+  "model": "microsoft/deberta-v3-small",
+  "device": "cuda",
+  "budget_seconds": 10800,
+  "max_length": 512,
+  "batch_size": 1,
+  "m2_epochs": 2,
+  "m3_epochs": 1,
+  "learning_rate": 0.00002,
+  "weight_decay": 0.01,
+  "fgsm_epsilon": 0.005,
+  "mc_passes": [5, 10],
+  "mc_nll_tolerance": 0.01,
+  "ece_bins": 15,
+  "probe_steps": 4,
+  "safety_factor": 1.35,
+  "overhead_reserve_seconds": 600,
+  "demo_target_seconds": 600,
+  "demo_metric_tolerance": 0.05,
+  "demo_fractions": [1.0, 0.75, 0.5, 0.25, 0.125]
+}

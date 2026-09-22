@@ -1,0 +1,41 @@
+{
+  "validation": {
+    "documents": 683,
+    "windows": 1389,
+    "supervised_tokens": 488998,
+    "oversized_native_tokens": 1,
+    "discarded_subwords": 354,
+    "token_truncations": [
+      {
+        "record_id": "8447",
+        "token_index": 336,
+        "original_subwords": 864,
+        "retained_subwords": 510,
+        "discarded_subwords": 354,
+        "strategy": "oversized_native_token_head_tail"
+      }
+    ],
+    "unknown_native_tokens": 0,
+    "all_native_tokens_scored_once": true
+  },
+  "train": {
+    "documents": 4764,
+    "windows": 9875,
+    "supervised_tokens": 3489311,
+    "oversized_native_tokens": 0,
+    "discarded_subwords": 0,
+    "token_truncations": [],
+    "unknown_native_tokens": 0,
+    "all_native_tokens_scored_once": true
+  },
+  "calibration": {
+    "documents": 681,
+    "windows": 1445,
+    "supervised_tokens": 510528,
+    "oversized_native_tokens": 0,
+    "discarded_subwords": 0,
+    "token_truncations": [],
+    "unknown_native_tokens": 0,
+    "all_native_tokens_scored_once": true
+  }
+}

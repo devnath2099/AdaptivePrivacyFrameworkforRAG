@@ -1,0 +1,8 @@
+__pycache__/
+.pytest_cache/
+data/
+runs/
+logs/
+*.zip
+*.safetensors
+*.bin
